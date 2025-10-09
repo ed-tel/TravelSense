@@ -29,12 +29,23 @@ export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
     }
   };
 
-  const handleSocialLogin = (provider: string) => {
-    // Mock social login
-    if (onSignIn) {
-      onSignIn();
+  import { auth, provider, signInWithPopup } from "../firebaseConfig"; // adjust path if needed
+
+const handleSocialLogin = async (providerName: string) => {
+  if (providerName === "google") {
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      console.log("✅ Logged in with Google:", user);
+      if (onSignIn) onSignIn();
+    } catch (err) {
+      console.error("❌ Google sign-in failed:", err);
     }
-  };
+  } else {
+    alert("Only Google sign-in is implemented.");
+  }
+};
+
 
   return (
     <div className="min-h-screen bg-background flex">
