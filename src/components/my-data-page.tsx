@@ -21,7 +21,7 @@ export function MyDataPage() {
   const [dataCategories, setDataCategories] = useState<DataCategory[]>([
     {
       id: "location",
-      name: "Location Data Test :)",
+      name: "Location Data",
       description: "Helps businesses recommend better travel offers and local experiences based on your location.",
       detailedInfo: "This includes your current location, frequently visited places, and travel routes. We use this data to provide personalized recommendations for nearby attractions, restaurants, and services. Your exact location is never shared without your permission.",
       icon: MapPin,
