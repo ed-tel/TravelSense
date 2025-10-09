@@ -9,6 +9,8 @@ import { Separator } from "./ui/separator";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { auth, googleProvider, facebookProvider, signInWithPopup } from "../firebaseConfig";
 
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth"; //edit 1
+
 interface AuthPageProps {
   onSignIn?: () => void;
   onReturnToLanding?: () => void;
@@ -23,12 +25,40 @@ export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (onSignIn) {
-      onSignIn();
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  if (isSignUp) {
+    if (!agreedToTerms) {
+      alert("You must agree to the terms and privacy policy.");
+      return;
     }
-  };
+
+    if (password !== confirmPassword) {
+      alert("Passwords do not match.");
+      return;
+    }
+
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      console.log("User signed up successfully!");
+      if (onSignIn) onSignIn();
+    } catch (error: any) {
+      console.error("Sign-up error:", error.message);
+      alert(error.message);
+    }
+  } else {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      console.log("User signed in successfully!");
+      if (onSignIn) onSignIn();
+    } catch (error: any) {
+      console.error("Sign-in error:", error.message);
+      alert(error.message);
+    }
+  }
+};
+
 
 
 const handleSocialLogin = async (providerName: string) => {
