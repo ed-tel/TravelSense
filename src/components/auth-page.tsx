@@ -29,7 +29,7 @@ export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
     }
   };
 
-  import { auth, provider, signInWithPopup } from "../firebaseConfig"; // adjust path if needed
+  import { auth, provider, signInWithPopup } from "../firebaseConfig.ts"; // adjust path if needed
 
 const handleSocialLogin = async (providerName: string) => {
   if (providerName === "google") {
