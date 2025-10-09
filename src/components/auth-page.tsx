@@ -7,7 +7,7 @@ import { Checkbox } from "./ui/checkbox";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { Separator } from "./ui/separator";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { auth, provider, signInWithPopup } from "../firebaseConfig";
+import { auth, googleProvider, facebookProvider, signInWithPopup } from "../firebaseConfig";
 
 interface AuthPageProps {
   onSignIn?: () => void;
@@ -32,17 +32,22 @@ export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
 
 
 const handleSocialLogin = async (providerName: string) => {
+  let provider;
   if (providerName === "google") {
+    provider = googleProvider;
+  } else if (providerName === "facebook") {
+    provider = facebookProvider;
+  }
+
+  if (provider) {
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      console.log("✅ Logged in with Google:", user);
-      if (onSignIn) onSignIn();
+      console.log("Signed in user:", user);
+      if (onSignIn) onSignIn(); // Redirect to dashboard
     } catch (err) {
-      console.error("❌ Google sign-in failed:", err);
+      console.error(`${providerName} sign-in failed:`, err);
     }
-  } else {
-    alert("Only Google sign-in is implemented.");
   }
 };
 
