@@ -7,6 +7,7 @@ import { Checkbox } from "./ui/checkbox";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { Separator } from "./ui/separator";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { auth, provider, signInWithPopup } from "../firebaseConfig";
 
 interface AuthPageProps {
   onSignIn?: () => void;
@@ -29,7 +30,6 @@ export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
     }
   };
 
-  import { auth, provider, signInWithPopup } from "../firebaseConfig.ts"; // adjust path if needed
 
 const handleSocialLogin = async (providerName: string) => {
   if (providerName === "google") {
