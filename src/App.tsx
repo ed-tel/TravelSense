@@ -9,6 +9,9 @@ import { HeroPanel } from "./components/hero-panel";
 import { SummaryCards } from "./components/summary-cards";
 import { EntriesTable } from "./components/entries-table";
 
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
 type AppState = "landing" | "auth" | "dashboard" | "my-data" | "rewards" | "privacy";
 
 export default function App() {
@@ -47,47 +50,128 @@ export default function App() {
   };
 
   if (currentState === "landing") {
-    return <LandingPage onGetStarted={handleGetStarted} onSignIn={handleSignIn} />;
+    return (
+      <>
+        <LandingPage onGetStarted={handleGetStarted} onSignIn={handleSignIn} />
+        <ToastContainer 
+          position="top-center"
+          autoClose={5000}
+          hideProgressBar={true}
+          closeOnClick
+          pauseOnHover
+          draggable
+          toastClassName="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded shadow-md"
+          bodyClassName="text-sm"
+        />
+      </>
+    );
   }
 
   if (currentState === "auth") {
-    return <AuthPage onSignIn={handleAuthSuccess} onReturnToLanding={handleReturnToLanding} />;
+    return (
+      <>
+        <AuthPage onSignIn={handleAuthSuccess} onReturnToLanding={handleReturnToLanding} />
+        <ToastContainer 
+          position="top-center"
+          autoClose={5000}
+          hideProgressBar={true}
+          closeOnClick
+          pauseOnHover
+          draggable
+          toastClassName="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded shadow-md"
+          bodyClassName="text-sm"
+        />
+      </>
+    );
   }
 
   if (currentState === "my-data") {
     return (
-      <div className="min-h-screen bg-background">
-        <Navigation 
-          onLogoClick={handleReturnToLanding} 
-          onNavigateToMyData={handleNavigateToMyData}
-          onNavigateToDashboard={handleNavigateToDashboard}
-          onNavigateToRewards={handleNavigateToRewards}
-          onNavigateToPrivacy={handleNavigateToPrivacy}
-          currentPage="my-data"
+      <>
+        <div className="min-h-screen bg-background">
+          <Navigation 
+            onLogoClick={handleReturnToLanding} 
+            onNavigateToMyData={handleNavigateToMyData}
+            onNavigateToDashboard={handleNavigateToDashboard}
+            onNavigateToRewards={handleNavigateToRewards}
+            onNavigateToPrivacy={handleNavigateToPrivacy}
+            currentPage="my-data"
+          />
+          <MyDataPage />
+        </div>
+        <ToastContainer 
+          position="top-center"
+          autoClose={5000}
+          hideProgressBar={true}
+          closeOnClick
+          pauseOnHover
+          draggable
+          toastClassName="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded shadow-md"
+          bodyClassName="text-sm"
         />
-        <MyDataPage />
-      </div>
+      </>
     );
   }
 
   if (currentState === "rewards") {
     return (
-      <div className="min-h-screen bg-background">
-        <Navigation 
-          onLogoClick={handleReturnToLanding} 
-          onNavigateToMyData={handleNavigateToMyData}
-          onNavigateToDashboard={handleNavigateToDashboard}
-          onNavigateToRewards={handleNavigateToRewards}
-          onNavigateToPrivacy={handleNavigateToPrivacy}
-          currentPage="rewards"
+      <>
+        <div className="min-h-screen bg-background">
+          <Navigation 
+            onLogoClick={handleReturnToLanding} 
+            onNavigateToMyData={handleNavigateToMyData}
+            onNavigateToDashboard={handleNavigateToDashboard}
+            onNavigateToRewards={handleNavigateToRewards}
+            onNavigateToPrivacy={handleNavigateToPrivacy}
+            currentPage="rewards"
+          />
+          <RewardsPage />
+        </div>
+        <ToastContainer 
+          position="top-center"
+          autoClose={5000}
+          hideProgressBar={true}
+          closeOnClick
+          pauseOnHover
+          draggable
+          toastClassName="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded shadow-md"
+          bodyClassName="text-sm"
         />
-        <RewardsPage />
-      </div>
+      </>
     );
   }
 
   if (currentState === "privacy") {
     return (
+      <>
+        <div className="min-h-screen bg-background">
+          <Navigation 
+            onLogoClick={handleReturnToLanding} 
+            onNavigateToMyData={handleNavigateToMyData}
+            onNavigateToDashboard={handleNavigateToDashboard}
+            onNavigateToRewards={handleNavigateToRewards}
+            onNavigateToPrivacy={handleNavigateToPrivacy}
+            currentPage="privacy"
+          />
+          <PrivacySecurityPage />
+        </div>
+        <ToastContainer 
+          position="top-center"
+          autoClose={5000}
+          hideProgressBar={true}
+          closeOnClick
+          pauseOnHover
+          draggable
+          toastClassName="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded shadow-md"
+          bodyClassName="text-sm"
+        />
+      </>
+    );
+  }
+
+  // Default: dashboard
+  return (
+    <>
       <div className="min-h-screen bg-background">
         <Navigation 
           onLogoClick={handleReturnToLanding} 
@@ -95,29 +179,27 @@ export default function App() {
           onNavigateToDashboard={handleNavigateToDashboard}
           onNavigateToRewards={handleNavigateToRewards}
           onNavigateToPrivacy={handleNavigateToPrivacy}
-          currentPage="privacy"
+          currentPage="dashboard"
         />
-        <PrivacySecurityPage />
+        
+        <main className="container mx-auto px-6 py-8 space-y-8">
+          <HeroPanel />
+          <SummaryCards />
+          <EntriesTable />
+        </main>
       </div>
-    );
-  }
 
-  return (
-    <div className="min-h-screen bg-background">
-      <Navigation 
-        onLogoClick={handleReturnToLanding} 
-        onNavigateToMyData={handleNavigateToMyData}
-        onNavigateToDashboard={handleNavigateToDashboard}
-        onNavigateToRewards={handleNavigateToRewards}
-        onNavigateToPrivacy={handleNavigateToPrivacy}
-        currentPage="dashboard"
+      {/* Toast container works globally */}
+      <ToastContainer 
+        position="top-center"
+        autoClose={5000}
+        hideProgressBar={true}
+        closeOnClick
+        pauseOnHover
+        draggable
+        toastClassName="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded shadow-md"
+        bodyClassName="text-sm"
       />
-      
-      <main className="container mx-auto px-6 py-8 space-y-8">
-        <HeroPanel />
-        <SummaryCards />
-        <EntriesTable />
-      </main>
-    </div>
+    </>
   );
 }
