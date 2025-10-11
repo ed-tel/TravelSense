@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import { Database, Mail, Lock, Eye, EyeOff, Shield, Plane } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -7,14 +8,19 @@ import { Checkbox } from "./ui/checkbox";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { Separator } from "./ui/separator";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { auth, googleProvider, facebookProvider, signInWithPopup } from "../firebaseConfig";
 
+import { auth, googleProvider, facebookProvider, signInWithPopup } from "../firebaseConfig";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth"; //edit 1
+import { AlertCircle } from "lucide-react";
+import { sendEmailVerification } from "firebase/auth";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { toast } from "react-toastify";
 
 interface AuthPageProps {
   onSignIn?: () => void;
   onReturnToLanding?: () => void;
 }
+
 
 export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -24,62 +30,139 @@ export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [signInError, setSignInError] = useState("");
+  const [verificationUser, setVerificationUser] = useState<any | null>(null);
+
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      toast.error("Please enter your email address to reset your password.");
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, email);
+      toast.success("Password reset email sent. Check your inbox.");
+    } catch (error: any) {
+      console.error("Password reset error:", error.message);
+      toast.error("Failed to send reset email. Please try again.");
+    }
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  if (isSignUp) {
-    if (!agreedToTerms) {
-      alert("You must agree to the terms and privacy policy.");
-      return;
+    if (isSignUp) {
+      if (!agreedToTerms) {
+        alert("You must agree to the terms and privacy policy.");
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        alert("Passwords do not match.");
+        return;
+      }
+
+      if (password.length < 6) {
+        alert("Password should be at least 6 characters.");
+        return;
+      }
+
+      try {
+        const userCredential = await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+        const user = userCredential.user;
+
+        // Save user to resend verification email later if needed
+        setVerificationUser(user);
+
+        // Send verification email
+        await sendEmailVerification(user);
+        toast.success(
+          "A verification email has been sent. Please check your inbox and spam folder before signing in."
+        );
+
+        // Reset form state
+        setEmail("");
+        setPassword("");
+        setConfirmPassword("");
+        setAgreedToTerms(false);
+        setEmailError("");
+        setSignInError("");
+        setIsSignUp(false); // Switch to sign-in mode
+      } catch (error: any) {
+        console.error("Sign-up error:", error.message);
+        if (error.code === "auth/email-already-in-use") {
+          setEmailError("This email is already registered.");
+        } else if (error.code === "auth/weak-password") {
+          alert("Password should be at least 6 characters.");
+        } else {
+          alert(error.message);
+        }
+      }
+    } else {
+      // Sign-in flow
+      try {
+        const userCredential = await signInWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+        const user = userCredential.user;
+
+        if (!user.emailVerified) {
+          setSignInError("Please verify your email before signing in.");
+          setVerificationUser(user); // Store user to resend verification email
+          await auth.signOut(); // Force logout if not verified
+          return;
+        }
+
+        setVerificationUser(null); // Clear stored user on success
+        console.log("User signed in successfully!");
+        if (onSignIn) onSignIn();
+      } catch (error: any) {
+        console.error("Sign-in error:", error.message);
+
+        if (error.code === "auth/user-not-found") {
+          setSignInError("No account found with this email.");
+        } else if (error.code === "auth/network-request-failed") {
+          setSignInError("Network error. Check your connection.");
+        } else if (
+          error.code === "auth/invalid-credential" ||
+          error.code === "auth/wrong-password"
+        ) {
+          setSignInError("Invalid email or password.");
+        } else {
+          setSignInError("An unexpected error occurred.");
+        }
+      }
+    }
+  };
+
+  const handleSocialLogin = async (providerName: string) => {
+    let provider;
+    if (providerName === "google") {
+      provider = googleProvider;
+    } else if (providerName === "facebook") {
+      provider = facebookProvider;
     }
 
-    if (password !== confirmPassword) {
-      alert("Passwords do not match.");
-      return;
+    if (provider) {
+      try {
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        console.log("Signed in user:", user);
+        if (onSignIn) onSignIn(); // Redirect to dashboard
+      } catch (err) {
+        console.error(`${providerName} sign-in failed:`, err);
+      }
     }
-
-    try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      console.log("User signed up successfully!");
-      if (onSignIn) onSignIn();
-    } catch (error: any) {
-      console.error("Sign-up error:", error.message);
-      alert(error.message);
-    }
-  } else {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      console.log("User signed in successfully!");
-      if (onSignIn) onSignIn();
-    } catch (error: any) {
-      console.error("Sign-in error:", error.message);
-      alert(error.message);
-    }
-  }
-};
-
-
-
-const handleSocialLogin = async (providerName: string) => {
-  let provider;
-  if (providerName === "google") {
-    provider = googleProvider;
-  } else if (providerName === "facebook") {
-    provider = facebookProvider;
-  }
-
-  if (provider) {
-    try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      console.log("Signed in user:", user);
-      if (onSignIn) onSignIn(); // Redirect to dashboard
-    } catch (err) {
-      console.error(`${providerName} sign-in failed:`, err);
-    }
-  }
-};
+  };
 
 
   return (
@@ -89,7 +172,7 @@ const handleSocialLogin = async (providerName: string) => {
         <div className="w-full max-w-md space-y-8">
           {/* Logo */}
           <div className="text-center">
-            <button 
+            <button
               onClick={onReturnToLanding}
               className="inline-flex items-center space-x-3 hover:opacity-80 transition-opacity mb-8"
             >
@@ -106,8 +189,8 @@ const handleSocialLogin = async (providerName: string) => {
               {isSignUp ? "Create your account" : "Welcome back"}
             </h1>
             <p className="text-muted-foreground">
-              {isSignUp 
-                ? "Start your journey with secure data sharing" 
+              {isSignUp
+                ? "Start your journey with secure data sharing"
                 : "Sign in to your TravelSense account"
               }
             </p>
@@ -129,16 +212,68 @@ const handleSocialLogin = async (providerName: string) => {
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                     <Input
-                      id="email"
-                      type="email"
-                      placeholder="Enter your email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10 bg-input-background border-border/50 rounded-lg"
-                      required
-                    />
-                  </div>
+                    id="email"
+                    type="email"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setEmailError(""); // Clear error when typing
+                    }}
+                    className="pl-10 bg-input-background border-border/50 rounded-lg"
+                    required
+                  />
                 </div>
+                
+                {/* Show inline email error */}
+                {emailError && (
+                    <p className="text-sm text-destructive flex items-center gap-2 mt-1">
+                      <AlertCircle className="w-4 h-4 text-destructive" />
+                      <span>{emailError}</span>
+                    </p>
+                  )}
+                </div>
+
+                {/* Sign in: invalid email or password error */}
+                {!isSignUp && signInError && (
+                <div className="space-y-2">
+                  <p className="text-sm text-destructive flex items-center gap-2 mt-1">
+                    <AlertCircle className="w-4 h-4 text-destructive" />
+                    <span>{signInError}</span>
+                  </p>
+
+                  {signInError === "Please verify your email before signing in." && (
+                    <div className="text-center">
+                      <Button
+                        variant="ghost"
+                        onClick={async () => {
+                          if (!verificationUser) {
+                            console.error("No verification user stored – cannot resend verification email.");
+                            return;
+                          }
+                          if (verificationUser.emailVerified) {
+                            console.log("User already verified.");
+                            return;
+                          }
+
+                          try {
+                            await sendEmailVerification(verificationUser);
+                            toast.success("Verification email resent.");
+                          } catch (err: any) {
+                            console.error("Error resending verification:", err);
+                            toast.error("Failed to resend verification email. Try again later.");
+                          }
+                        }}
+                      >
+                        Resend Verification Email
+                      </Button>
+
+                    </div>
+                  )}
+                </div>
+              )}
+
+
 
                 {/* Password */}
                 <div className="space-y-2">
@@ -162,6 +297,13 @@ const handleSocialLogin = async (providerName: string) => {
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                  {/* 🔴 Password too short warning */}
+                  {isSignUp && password && password.length < 6 && (
+                    <p className="mt-1 text-sm text-destructive flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4  text-destructive" />
+                      <span>Password must be at least 6 characters</span>
+                      </p>
+                    )}
                 </div>
 
                 {/* Confirm Password (Sign Up only) */}
@@ -187,6 +329,14 @@ const handleSocialLogin = async (providerName: string) => {
                         {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
+
+                    {/* Real-time password mismatch error */}
+                    {password && confirmPassword && password !== confirmPassword && (
+                    <p className="text-sm text-destructive flex items-center gap-2 mt-1">
+                    <AlertCircle className="w-4 h-4 text-destructive" />
+                    <span>Passwords do not match</span>
+                    </p>
+                    )}
                   </div>
                 )}
 
@@ -216,7 +366,13 @@ const handleSocialLogin = async (providerName: string) => {
                 <Button
                   type="submit"
                   className="w-full rounded-lg py-6"
-                  disabled={isSignUp && !agreedToTerms}
+                  disabled={
+                    (isSignUp && (!agreedToTerms || password !== confirmPassword ||
+                      password.length < 6 ||
+                      !!emailError
+                    )) ||
+                    !email || !password
+                  }
                 >
                   {isSignUp ? "Sign Up" : "Sign In"}
                 </Button>
@@ -226,8 +382,8 @@ const handleSocialLogin = async (providerName: string) => {
               <div className="text-center">
                 {!isSignUp ? (
                   <a
-                    href="#"
-                    className="text-sm text-primary hover:underline"
+                    onClick={handleForgotPassword}
+                    className="text-sm text-primary hover:underline cursor-pointer"
                   >
                     Forgot password?
                   </a>
@@ -329,7 +485,7 @@ const handleSocialLogin = async (providerName: string) => {
                 className="w-full h-full object-cover rounded-2xl"
               />
             </div>
-            
+
             {/* Floating icons */}
             <div className="absolute top-1/4 left-1/4 w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center backdrop-blur-sm">
               <Plane className="w-8 h-8 text-primary" />
@@ -342,7 +498,7 @@ const handleSocialLogin = async (providerName: string) => {
             </div>
           </div>
         </div>
-        
+
         {/* Content overlay */}
         <div className="absolute bottom-16 left-16 right-16 text-center space-y-4">
           <h2 className="text-2xl font-medium text-foreground">

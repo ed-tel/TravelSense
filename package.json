@@ -45,7 +45,9 @@
             "react-day-picker": "^8.10.1",
             "react-dom": "^18.3.1",
             "react-hook-form": "^7.55.0",
+            "react-hot-toast": "^2.6.0",
             "react-resizable-panels": "^2.1.7",
+            "react-toastify": "^11.0.5",
             "recharts": "^2.15.2",
             "sonner": "^2.0.3",
             "tailwind-merge": "*",
@@ -54,7 +56,10 @@
       "devDependencies": {
             "@types/node": "^20.10.0",
             "@types/react": "^19.2.2",
+<<<<<<< HEAD
             "@types/react-dom": "^19.2.1",
+=======
+>>>>>>> 9d649b67473924e32718ff5d21f64b73e4f09b8a
             "@vitejs/plugin-react-swc": "^3.10.2",
             "typescript": "^5.9.3",
             "vite": "^6.3.6"
