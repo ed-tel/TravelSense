@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { Database, Mail, Lock, Eye, EyeOff, Shield, Plane, Loader2, Send } from "lucide-react";
+import { Database, Mail, Lock, Eye, EyeOff, Shield, Plane } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -9,19 +9,12 @@ import { Card, CardContent, CardHeader } from "./ui/card";
 import { Separator } from "./ui/separator";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail } from "firebase/auth";
-import { AlertCircle } from "lucide-react";
-import { toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-
-import { PoliciesDialog } from "./policies-dialog"; // Adjust path as needed
-
-import { GoogleAuthProvider, FacebookAuthProvider, EmailAuthProvider, linkWithCredential, fetchSignInMethodsForEmail } from 'firebase/auth';
-
-import { doc, setDoc } from "firebase/firestore";
-import { useRef } from "react"; // ✅ make sure useRef is imported
-// ✅ Move these OUTSIDE the component so they are not recreated every render
 import { auth, googleProvider, facebookProvider, signInWithPopup } from "../firebaseConfig";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth"; //edit 1
+import { AlertCircle } from "lucide-react";
+import { sendEmailVerification } from "firebase/auth";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { toast } from "react-toastify";
 
 interface AuthPageProps {
   onSignIn?: () => void;
@@ -30,7 +23,6 @@ interface AuthPageProps {
 
 
 export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
-  const [popupActive, setPopupActive] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -41,12 +33,6 @@ export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
   const [emailError, setEmailError] = useState("");
   const [signInError, setSignInError] = useState("");
   const [verificationUser, setVerificationUser] = useState<any | null>(null);
-  // 🧩 ADD THIS LINE BELOW
-  const pendingCredRef = useRef<any>(null);
-
-  // Initialize Firebase Auth and Firestore
-  const [loading, setLoading] = useState(false);
-
 
 
   const handleForgotPassword = async () => {
@@ -65,122 +51,118 @@ export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
   };
 
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoading(true); // 🟢 Start loading
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-  if (isSignUp) {
-    if (!agreedToTerms) {
-      alert("You must agree to the terms and privacy policy.");
-      setLoading(false);
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      alert("Passwords do not match.");
-      setLoading(false);
-      return;
-    }
-
-    if (password.length < 6) {
-      alert("Password should be at least 6 characters.");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      setVerificationUser(user);
-      await sendEmailVerification(user);
-
-      toast.success(
-        "A verification email has been sent. Please check your inbox and spam folder before signing in."
-      );
-
-      // Reset form state
-      setEmail("");
-      setPassword("");
-      setConfirmPassword("");
-      setAgreedToTerms(false);
-      setEmailError("");
-      setSignInError("");
-      setIsSignUp(false);
-    } catch (error: any) {
-      console.error("Sign-up error:", error.message);
-      if (error.code === "auth/email-already-in-use") {
-        setEmailError("This email is already registered.");
-      } else if (error.code === "auth/weak-password") {
-        alert("Password should be at least 6 characters.");
-      } else {
-        alert(error.message);
-      }
-    } finally {
-      setLoading(false); // 🔵 Stop loading
-    }
-  } else {
-    // Sign-in flow
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      if (!user.emailVerified) {
-        setSignInError("Please verify your email before signing in.");
-        setVerificationUser(user);
-        await auth.signOut();
+    if (isSignUp) {
+      if (!agreedToTerms) {
+        alert("You must agree to the terms and privacy policy.");
         return;
       }
 
-      setVerificationUser(null);
-      console.log("User signed in successfully!");
-      if (onSignIn) onSignIn();
-    } catch (error: any) {
-      console.error("Sign-in error:", error.message);
-
-      if (error.code === "auth/user-not-found") {
-        setSignInError("No account found with this email.");
-      } else if (error.code === "auth/network-request-failed") {
-        setSignInError("Network error. Check your connection.");
-      } else if (
-        error.code === "auth/invalid-credential" ||
-        error.code === "auth/wrong-password"
-      ) {
-        setSignInError("Invalid email or password.");
-      } else {
-        setSignInError("An unexpected error occurred.");
+      if (password !== confirmPassword) {
+        alert("Passwords do not match.");
+        return;
       }
-    } finally {
-      setLoading(false); // 🔵 Stop loading
-    }
-  }
-};
 
+      if (password.length < 6) {
+        alert("Password should be at least 6 characters.");
+        return;
+      }
+
+      try {
+        const userCredential = await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+        const user = userCredential.user;
+
+        // Save user to resend verification email later if needed
+        setVerificationUser(user);
+
+        // Send verification email
+        await sendEmailVerification(user);
+        toast.success(
+          "A verification email has been sent. Please check your inbox and spam folder before signing in."
+        );
+
+        // Reset form state
+        setEmail("");
+        setPassword("");
+        setConfirmPassword("");
+        setAgreedToTerms(false);
+        setEmailError("");
+        setSignInError("");
+        setIsSignUp(false); // Switch to sign-in mode
+      } catch (error: any) {
+        console.error("Sign-up error:", error.message);
+        if (error.code === "auth/email-already-in-use") {
+          setEmailError("This email is already registered.");
+        } else if (error.code === "auth/weak-password") {
+          alert("Password should be at least 6 characters.");
+        } else {
+          alert(error.message);
+        }
+      }
+    } else {
+      // Sign-in flow
+      try {
+        const userCredential = await signInWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+        const user = userCredential.user;
+
+        if (!user.emailVerified) {
+          setSignInError("Please verify your email before signing in.");
+          setVerificationUser(user); // Store user to resend verification email
+          await auth.signOut(); // Force logout if not verified
+          return;
+        }
+
+        setVerificationUser(null); // Clear stored user on success
+        console.log("User signed in successfully!");
+        if (onSignIn) onSignIn();
+      } catch (error: any) {
+        console.error("Sign-in error:", error.message);
+
+        if (error.code === "auth/user-not-found") {
+          setSignInError("No account found with this email.");
+        } else if (error.code === "auth/network-request-failed") {
+          setSignInError("Network error. Check your connection.");
+        } else if (
+          error.code === "auth/invalid-credential" ||
+          error.code === "auth/wrong-password"
+        ) {
+          setSignInError("Invalid email or password.");
+        } else {
+          setSignInError("An unexpected error occurred.");
+        }
+      }
+    }
+  };
 
   const handleSocialLogin = async (providerName: string) => {
-  if (popupActive) return; // 🧩 Prevent multiple concurrent popups
-  setPopupActive(true);
-  setLoading(true);
-
-  let provider = providerName === "Google" ? googleProvider : facebookProvider;
-
-  try {
-    const result = await signInWithPopup(auth, provider);
-    console.log("Signed in user:", result.user);
-    toast.success(`Signed in with ${providerName} successfully!`);
-    onSignIn?.();
-  } catch (err: any) {
-    console.error(`${providerName} sign-in failed:`, err);
-    if (err.code === "auth/account-exists-with-different-credential") {
-      toast.info("This email is already registered with another provider. Try signing in with that provider.");
-    } else {
-      toast.error(`Login failed: ${err.message}`);
+    let provider;
+    if (providerName === "google") {
+      provider = googleProvider;
+    } else if (providerName === "facebook") {
+      provider = facebookProvider;
     }
-  } finally {
-    setPopupActive(false);
-    setLoading(false);
-  }
-};
+
+    if (provider) {
+      try {
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        console.log("Signed in user:", user);
+        if (onSignIn) onSignIn(); // Redirect to dashboard
+      } catch (err) {
+        console.error(`${providerName} sign-in failed:`, err);
+      }
+    }
+  };
 
 
   return (
@@ -195,7 +177,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               className="inline-flex items-center space-x-3 hover:opacity-80 transition-opacity mb-8"
             >
               <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
-                <Plane className="w-5 h-5 text-primary-foreground" />
+                <Database className="w-5 h-5 text-primary-foreground" />
               </div>
               <span className="text-2xl font-medium">TravelSense</span>
             </button>
@@ -283,7 +265,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                           }
                         }}
                       >
-                        <Send/>Resend Verification Email
+                        Resend Verification Email
                       </Button>
 
                     </div>
@@ -359,31 +341,40 @@ const handleSubmit = async (e: React.FormEvent) => {
                 )}
 
                 {/* Terms Agreement (Sign Up only) */}
-                {/* Policies Dialog */}
                 {isSignUp && (
-                <PoliciesDialog
-                  agreedToTerms={agreedToTerms}
-                  setAgreedToTerms={setAgreedToTerms}
-                />
-              )}
+                  <div className="flex items-start space-x-2">
+                    <Checkbox
+                      id="terms"
+                      checked={agreedToTerms}
+                      onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
+                      className="mt-1"
+                    />
+                    <Label htmlFor="terms" className="text-sm leading-5">
+                      I agree to the{" "}
+                      <a href="#" className="text-primary hover:underline">
+                        Privacy Policy
+                      </a>{" "}
+                      &{" "}
+                      <a href="#" className="text-primary hover:underline">
+                        Terms of Service
+                      </a>
+                    </Label>
+                  </div>
+                )}
+
                 {/* Submit Button */}
                 <Button
                   type="submit"
-                  className="w-full rounded-lg py-6 py-6 flex items-center justify-center"
+                  className="w-full rounded-lg py-6"
                   disabled={
-                    loading || 
-                    (isSignUp && (!agreedToTerms || password !== confirmPassword || password.length < 6 || !!emailError)) ||
+                    (isSignUp && (!agreedToTerms || password !== confirmPassword ||
+                      password.length < 6 ||
+                      !!emailError
+                    )) ||
                     !email || !password
                   }
                 >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      {isSignUp ? "Signing Up..." : "Signing In..."}
-                    </>
-                  ) : (
-                    <>{isSignUp ? "Sign Up" : "Sign In"}</>
-                  )}
+                  {isSignUp ? "Sign Up" : "Sign In"}
                 </Button>
               </form>
 
@@ -420,7 +411,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               <div className="grid grid-cols-2 gap-3">
                 <Button
                   variant="outline"
-                  onClick={() => handleSocialLogin('Google')}
+                  onClick={() => handleSocialLogin('google')}
                   className="rounded-lg py-6 border-border/50"
                 >
                   <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24">
@@ -445,7 +436,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => handleSocialLogin('Facebook')}
+                  onClick={() => handleSocialLogin('facebook')}
                   className="rounded-lg py-6 border-border/50"
                 >
                   <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
