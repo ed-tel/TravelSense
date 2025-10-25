@@ -151,6 +151,10 @@ const [visibleLogs, setVisibleLogs] = useState(5);
 const [phoneNumber, setPhoneNumber] = useState("+64"); // ✅ Default NZ prefix
 const [isVerifyingMfa, setIsVerifyingMfa] = useState(false);
 const [showPhoneInput, setShowPhoneInput] = useState(false);
+const [verificationCode, setVerificationCode] = useState("");
+const [verificationId, setVerificationId] = useState<string | null>(null);
+const [isCodeSent, setIsCodeSent] = useState(false);
+
 
 
 const checkMfaStatus = () => {
@@ -160,35 +164,44 @@ const checkMfaStatus = () => {
 };
 
 useEffect(() => {
-  if (auth && !window.recaptchaVerifier) {
-    try {
-      console.log("Auth object before Recaptcha init:", auth);
-
-      // ✅ Type-safe workaround for Firebase Auth v12+
-      const verifier = new (RecaptchaVerifier as any)(
-        "recaptcha-container", // HTML element ID (must exist in JSX)
-        {
-          size: "invisible",
-          callback: (response: any) => {
-            console.log("✅ reCAPTCHA solved:", response);
-          },
-          "expired-callback": () => {
-            console.warn("⚠️ reCAPTCHA expired, please retry.");
-          },
-        },
-        auth // ✅ Auth instance as third argument
-      );
-
-      // Store globally for reuse
-      window.recaptchaVerifier = verifier;
-
-      console.log("✅ reCAPTCHA initialized successfully");
-    } catch (err) {
-      console.error("❌ reCAPTCHA init error:", err);
+  const initializeRecaptcha = () => {
+    if (!auth?.app || !auth.currentUser) {
+      console.warn("⏳ Auth not ready yet, waiting...");
+      setTimeout(initializeRecaptcha, 1000);
+      return;
     }
-  }
-}, []);
 
+    const container = document.getElementById("recaptcha-container");
+    if (!container) {
+      console.warn("⏳ reCAPTCHA container not yet in DOM, waiting...");
+      setTimeout(initializeRecaptcha, 500);
+      return;
+    }
+
+    if (!window.recaptchaVerifier) {
+      // 👇 REPLACE the existing try/catch block here
+      try {
+        console.log("✅ Auth ready, initializing reCAPTCHA…");
+
+        // ✅ FIXED: Correct runtime argument order for Firebase 12.x
+        const verifier = new (RecaptchaVerifier as any)(
+          auth, // ✅ Auth instance first
+          "recaptcha-container", // ✅ then the container ID
+          { size: "invisible" }  // ✅ config last
+        );
+
+        window.recaptchaVerifier = verifier;
+        console.log("🎉 reCAPTCHA successfully initialized");
+      } catch (err) {
+        console.error("❌ reCAPTCHA init error:", err);
+      }
+    } else {
+      console.log("⚠️ reCAPTCHA already initialized");
+    }
+  };
+
+  initializeRecaptcha();
+}, []);
 
 useEffect(() => {
   setMfaEnabled(checkMfaStatus());
@@ -890,66 +903,115 @@ const getInitials = (name: string) =>
 
     {/* ✅ Inline phone number input - show only when user enabling MFA */}
     {showPhoneInput && !mfaEnabled && (
-      <div className="flex flex-col space-y-2 mt-3 animate-fadeIn">
-        <Label htmlFor="phone">Phone Number</Label>
-        <PhoneInput
-          country={"nz"} // Default country
-          value={phoneNumber}
-          onChange={(val) => setPhoneNumber("+" + val)}
-          inputStyle={{
-            width: "100%",
-            borderRadius: "8px",
-            border: "1px solid #ccc",
-            height: "40px",
-            fontSize: "14px",
-          }}
-          containerStyle={{ width: "100%" }}
-        />
-        {/* ✅ Align buttons horizontally */}
-  <div className="flex justify-end gap-3 mt-4">
-    <Button
-      className="bg-blue-600 text-white hover:bg-blue-700"
-      onClick={async () => {
-        try {
-          const recaptchaVerifier = window.recaptchaVerifier;
-          if (!recaptchaVerifier) {
-            toast.error("reCAPTCHA not ready. Please reload the page and try again.");
-            return;
-          }
+  <div className="flex flex-col space-y-3 mt-3 animate-fadeIn">
+    <Label htmlFor="phone">Phone Number</Label>
 
-          if (!phoneNumber || phoneNumber.trim().length < 8) {
-            toast.error("Please enter a valid phone number.");
-            return;
-          }
-
-          const phoneProvider = new PhoneAuthProvider(auth);
-          const verificationId = await phoneProvider.verifyPhoneNumber(phoneNumber, recaptchaVerifier);
-          const code = prompt("Enter the 6-digit verification code:");
-          if (!code) return;
-
-          const credential = PhoneAuthProvider.credential(verificationId, code);
-          const assertion = PhoneMultiFactorGenerator.assertion(credential);
-
-          await multiFactor(auth.currentUser!).enroll(assertion, "Primary phone");
-          toast.success("MFA enabled successfully!");
-          setMfaEnabled(true);
-          setShowPhoneInput(false);
-        } catch (err: any) {
-          console.error("MFA enable error:", err);
-          toast.error(err.message || "Failed to enable MFA.");
-        }
+    {/* Phone Input */}
+    <PhoneInput
+      country="nz"
+      value={phoneNumber}
+      onChange={(val) => setPhoneNumber("+" + val)}
+      inputStyle={{
+        width: "100%",
+        borderRadius: "8px",
+        border: "1px solid #ccc",
+        height: "40px",
+        fontSize: "14px",
       }}
-    >
-      Confirm & Enable MFA
-    </Button>
+      containerStyle={{ width: "100%" }}
+    />
 
-    <Button variant="outline" onClick={() => setShowPhoneInput(false)}>
-      Cancel
-    </Button>
-  </div>
-</div>
+    {/* ✅ Step 1: Send SMS */}
+    {!isCodeSent && (
+      <div className="flex space-x-2 mt-2">
+        <Button
+          className="bg-blue-600 text-white hover:bg-blue-700"
+          onClick={async () => {
+            try {
+              const recaptchaVerifier = window.recaptchaVerifier;
+              if (!recaptchaVerifier) {
+                toast.error("reCAPTCHA not ready. Please reload the page.");
+                return;
+              }
+
+              if (!phoneNumber || phoneNumber.trim().length < 8) {
+                toast.error("Please enter a valid phone number.");
+                return;
+              }
+
+              console.log("📱 Sending SMS to:", phoneNumber);
+
+              const phoneProvider = new PhoneAuthProvider(auth);
+              const id = await phoneProvider.verifyPhoneNumber(phoneNumber, recaptchaVerifier);
+
+              setVerificationId(id);
+              setIsCodeSent(true);
+              toast.success("Verification code sent! Check your SMS.");
+            } catch (err: any) {
+              console.error("❌ SMS send error:", err);
+              toast.error(err.message || "Failed to send SMS.");
+            }
+          }}
+        >
+          Send Code
+        </Button>
+
+        <Button variant="outline" onClick={() => setShowPhoneInput(false)}>
+          Cancel
+        </Button>
+      </div>
     )}
 
+    {/* ✅ Step 2: Code input + Verify button */}
+    {isCodeSent && (
+      <div className="flex flex-col space-y-2">
+        <Label htmlFor="verificationCode">Enter 6-digit Code</Label>
+        <div className="flex space-x-2">
+          <Input
+            id="verificationCode"
+            placeholder="123456"
+            value={verificationCode}
+            onChange={(e) => setVerificationCode(e.target.value)}
+            className="text-center tracking-widest font-mono"
+            maxLength={6}
+          />
+          <Button
+            className="bg-green-600 text-white hover:bg-green-700"
+            onClick={async () => {
+              try {
+                if (!verificationId) {
+                  toast.error("Missing verification ID. Try sending the code again.");
+                  return;
+                }
+
+                if (verificationCode.trim().length !== 6) {
+                  toast.error("Please enter a valid 6-digit code.");
+                  return;
+                }
+
+                const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
+                const assertion = PhoneMultiFactorGenerator.assertion(credential);
+
+                await multiFactor(auth.currentUser!).enroll(assertion, "Primary phone");
+
+                toast.success("✅ MFA enabled successfully!");
+                setMfaEnabled(true);
+                setShowPhoneInput(false);
+                setIsCodeSent(false);
+                setVerificationCode("");
+              } catch (err: any) {
+                console.error("❌ Code verification error:", err);
+                toast.error(err.message || "Invalid or expired code.");
+              }
+            }}
+          >
+            Verify Code
+          </Button>
+        </div>
+      </div>
+    )}
+  </div>
+)}
     {/* ✅ reCAPTCHA container */}
     <div id="recaptcha-container"></div>
 
