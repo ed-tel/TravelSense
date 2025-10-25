@@ -22,12 +22,18 @@ import { doc, setDoc } from "firebase/firestore";
 import { useRef } from "react"; // ✅ make sure useRef is imported
 // ✅ Move these OUTSIDE the component so they are not recreated every render
 import { auth, googleProvider, facebookProvider, signInWithPopup } from "../firebaseConfig";
+import {
+  PhoneAuthProvider,
+  PhoneMultiFactorGenerator,
+  multiFactor,
+  RecaptchaVerifier,
+  getMultiFactorResolver
+} from "firebase/auth";
 
 interface AuthPageProps {
   onSignIn?: () => void;
   onReturnToLanding?: () => void;
 }
-
 
 export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
   const [popupActive, setPopupActive] = useState(false);
@@ -46,7 +52,9 @@ export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
 
   // Initialize Firebase Auth and Firestore
   const [loading, setLoading] = useState(false);
-
+  const [showMfaCodeInput, setShowMfaCodeInput] = useState(false);
+  const [verificationId, setVerificationId] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
 
 
   const handleForgotPassword = async () => {
@@ -119,43 +127,80 @@ const handleSubmit = async (e: React.FormEvent) => {
     } finally {
       setLoading(false); // 🔵 Stop loading
     }
-  } else {
-    // Sign-in flow
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+ } else {
+  // 🟦 Sign-in flow
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
 
-      if (!user.emailVerified) {
-        setSignInError("Please verify your email before signing in.");
-        setVerificationUser(user);
-        await auth.signOut();
-        return;
-      }
-
-      setVerificationUser(null);
-      console.log("User signed in successfully!");
-      if (onSignIn) onSignIn();
-    } catch (error: any) {
-      console.error("Sign-in error:", error.message);
-
-      if (error.code === "auth/user-not-found") {
-        setSignInError("No account found with this email.");
-      } else if (error.code === "auth/network-request-failed") {
-        setSignInError("Network error. Check your connection.");
-      } else if (
-        error.code === "auth/invalid-credential" ||
-        error.code === "auth/wrong-password"
-      ) {
-        setSignInError("Invalid email or password.");
-      } else {
-        setSignInError("An unexpected error occurred.");
-      }
-    } finally {
-      setLoading(false); // 🔵 Stop loading
+    if (!user.emailVerified) {
+      setSignInError("Please verify your email before signing in.");
+      setVerificationUser(user);
+      await auth.signOut();
+      return;
     }
-  }
-};
 
+    setVerificationUser(null);
+    console.log("User signed in successfully!");
+    if (onSignIn) onSignIn();
+
+  } catch (error: any) {
+    // 🟡 Handle MFA-required case
+    if (error.code === "auth/multi-factor-auth-required") {
+      console.warn("🔒 MFA required for this account");
+
+      const resolver = getMultiFactorResolver(auth, error);
+
+      // ✅ Initialize reCAPTCHA if not already
+      if (!window.recaptchaVerifier) {
+        window.recaptchaVerifier = new (RecaptchaVerifier as any)(
+          auth,                   // ✅ Auth instance FIRST
+          "recaptcha-container",  // ✅ element ID
+          { size: "invisible" }   // ✅ config LAST
+        );
+      }
+
+      const phoneInfoOptions = {
+        multiFactorHint: resolver.hints[0],
+        session: resolver.session,
+      };
+
+      const phoneAuthProvider = new PhoneAuthProvider(auth);
+      const verificationId = await phoneAuthProvider.verifyPhoneNumber(
+        phoneInfoOptions,
+        window.recaptchaVerifier
+      );
+
+      // ✅ Show inline MFA input
+      setVerificationId(verificationId);
+      setShowMfaCodeInput(true);
+      (window as any).mfaResolver = resolver; // store for verification step
+      toast.info("Enter the 6-digit code sent to your phone.");
+      setLoading(false); // stop loading spinner while waiting for user
+      return; // ⛔ stop here — wait for user to verify code
+    }
+
+    // 🟥 Regular error handling for non-MFA cases
+    console.error("Sign-in error:", error.message);
+
+    if (error.code === "auth/user-not-found") {
+      setSignInError("No account found with this email.");
+    } else if (error.code === "auth/network-request-failed") {
+      setSignInError("Network error. Check your connection.");
+    } else if (
+      error.code === "auth/invalid-credential" ||
+      error.code === "auth/wrong-password"
+    ) {
+      setSignInError("Invalid email or password.");
+    } else {
+      setSignInError("An unexpected error occurred.");
+    }
+
+  } finally {
+    setLoading(false); // 🔵 Stop loading
+  }
+}
+};
 
   const handleSocialLogin = async (providerName: string) => {
   if (popupActive) return; // 🧩 Prevent multiple concurrent popups
@@ -323,6 +368,59 @@ const handleSubmit = async (e: React.FormEvent) => {
                       </p>
                     )}
                 </div>
+
+                {/* 🔐 Inline MFA code input (only shown when needed) */}
+{showMfaCodeInput && (
+  <div className="space-y-2 animate-fadeIn">
+    <Label htmlFor="verificationCode">Enter 6-digit verification code</Label>
+    <div className="flex space-x-2">
+      <Input
+        id="verificationCode"
+        type="text"
+        placeholder="123456"
+        value={verificationCode}
+        onChange={(e) => setVerificationCode(e.target.value)}
+        maxLength={6}
+        className="text-center tracking-widest font-mono"
+      />
+      <Button
+        type="button"
+        className="bg-green-600 text-white hover:bg-green-700"
+        onClick={async () => {
+          try {
+            if (!verificationId) {
+              toast.error("Missing verification ID. Try signing in again.");
+              return;
+            }
+
+            const cred = PhoneAuthProvider.credential(
+              verificationId,
+              verificationCode
+            );
+            const multiFactorAssertion =
+              PhoneMultiFactorGenerator.assertion(cred);
+
+            const resolver = getMultiFactorResolver(auth, (window as any).mfaError);
+            const finalUserCred = await resolver.resolveSignIn(
+              multiFactorAssertion
+            );
+
+            toast.success("✅ Signed in with MFA successfully!");
+            setShowMfaCodeInput(false);
+            setVerificationCode("");
+            if (onSignIn) onSignIn();
+          } catch (err: any) {
+            console.error("❌ MFA verification error:", err);
+            toast.error("Invalid or expired code. Try again.");
+          }
+        }}
+      >
+        Verify
+      </Button>
+    </div>
+  </div>
+)}
+
 
                 {/* Confirm Password (Sign Up only) */}
                 {isSignUp && (
@@ -509,7 +607,7 @@ const handleSubmit = async (e: React.FormEvent) => {
         </div>
 
         {/* Content overlay */}
-        <div className="absolute bottom-16 left-16 right-16 text-center space-y-4">
+        <div className="absolute bottom-16 left-16 right-16 text-center space-y-4 p-8">
           <h2 className="text-2xl font-medium text-foreground">
             Your Journey Starts Here
           </h2>
@@ -518,6 +616,8 @@ const handleSubmit = async (e: React.FormEvent) => {
           </p>
         </div>
       </div>
+      {/* Invisible reCAPTCHA for MFA */}
+      <div id="recaptcha-container"></div>
     </div>
   );
 }
