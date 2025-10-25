@@ -154,6 +154,8 @@ const [showPhoneInput, setShowPhoneInput] = useState(false);
 const [verificationCode, setVerificationCode] = useState("");
 const [verificationId, setVerificationId] = useState<string | null>(null);
 const [isCodeSent, setIsCodeSent] = useState(false);
+const [tempToggle, setTempToggle] = useState(false);
+const [showMfaWarning, setShowMfaWarning] = useState(false);
 
 
 
@@ -870,49 +872,80 @@ const getInitials = (name: string) =>
   <CardContent className="p-6 space-y-4">
     {/* Header Row */}
     <div className="flex items-center justify-between">
-      <div className="flex items-center space-x-4">
-        <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-          <Lock className="w-5 h-5 text-blue-600" />
-        </div>
-        <div>
-          <h4>Multi-Factor Authentication</h4>
-          <p className="text-sm text-muted-foreground">
-            Add an extra layer of security to your account with SMS MFA
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center space-x-3">
-        <Label htmlFor="mfa-toggle" className="text-sm">
-          {mfaEnabled ? "Enabled" : "Disabled"}
-        </Label>
-        <Switch
-  id="mfa-toggle"
-  checked={mfaEnabled}
-  disabled={!isEmailProvider} // 🚫 disable if not email/password
-  onCheckedChange={(checked) => {
-    if (!isEmailProvider) {
+  <div className="flex items-center space-x-4">
+    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+      <Lock className="w-5 h-5 text-blue-600" />
+    </div>
+    <div>
+      <h4>Multi-Factor Authentication</h4>
+      <p className="text-sm text-muted-foreground">
+        Add an extra layer of security to your account with SMS MFA
+      </p>
+    </div>
+  </div>
+
+  <div className="flex items-center space-x-3">
+    <Label htmlFor="mfa-toggle" className="text-sm">
+      {mfaEnabled ? "Enabled" : "Disabled"}
+    </Label>
+
+    <Switch
+      id="mfa-toggle"
+      checked={mfaEnabled || showPhoneInput || tempToggle}
+      onCheckedChange={(checked) => {
+        // 👇 If not email provider and trying to enable MFA
+        if (!isEmailProvider && checked) {
+      // temporarily flip toggle ON for UX feedback
+      setTempToggle(true); // visually ON
+
+      // show inline warning box
+      setShowMfaWarning(true);
       toast.info(
-        "MFA is only available for email/password accounts. Linked Google or Facebook accounts cannot use SMS verification."
+        "MFA is only available for email/password accounts."
       );
+
+      // after short delay → hide warning and toggle OFF again
+      setTimeout(() => {
+        setShowMfaWarning(false);
+        setTempToggle(false);
+      }, 4000); // 4 s delay before reverting
+
       return;
     }
 
-    if (checked) {
-      setShowPhoneInput(true);
-    } else {
-      handleToggleMfa(false);
-    }
-  }}
-/>
-      </div>
-    </div>
+        if (checked) {
+          setShowPhoneInput(true);
+          setShowMfaWarning(false);
+        } else {
+          handleToggleMfa(false);
+          setShowPhoneInput(false);
+          setShowMfaWarning(false);
+        }
+      }}
+    />
+  </div>
+</div>
 
-    {/* ✅ Inline phone number input - show only when user enabling MFA */}
-    {showPhoneInput && !mfaEnabled && (
+{/* ⚠️ Inline warning now only appears when toggled ON for non-email users */}
+{showMfaWarning && (
+  <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3 mt-3 animate-fadeIn">
+    ⚠️ Your account is connected through{" "}
+    <strong>
+      {auth.currentUser?.providerData
+        ?.map((p) => p.providerId.replace(".com", "").toUpperCase())
+        .join(", ")}
+    </strong>.
+    <br />
+    SMS-based multi-factor authentication is only supported for{" "}
+    <strong>email/password sign-ins.</strong>
+  </div>
+)}
+
+{/* ✅ Inline phone number input - only visible when MFA being enabled */}
+{showPhoneInput && isEmailProvider && !mfaEnabled && (
   <div className="flex flex-col space-y-3 mt-3 animate-fadeIn">
     <Label htmlFor="phone">Phone Number</Label>
 
-    {/* Phone Input */}
     <PhoneInput
       country="nz"
       value={phoneNumber}
@@ -927,9 +960,8 @@ const getInitials = (name: string) =>
       containerStyle={{ width: "100%" }}
     />
 
-    {/* ✅ Step 1: Send SMS */}
     {!isCodeSent && (
-      <div className="flex space-x-2 mt-2">
+      <div className="flex justify-end space-x-2 mt-2">
         <Button
           className="bg-blue-600 text-white hover:bg-blue-700"
           onClick={async () => {
@@ -946,9 +978,11 @@ const getInitials = (name: string) =>
               }
 
               console.log("📱 Sending SMS to:", phoneNumber);
-
               const phoneProvider = new PhoneAuthProvider(auth);
-              const id = await phoneProvider.verifyPhoneNumber(phoneNumber, recaptchaVerifier);
+              const id = await phoneProvider.verifyPhoneNumber(
+                phoneNumber,
+                recaptchaVerifier
+              );
 
               setVerificationId(id);
               setIsCodeSent(true);
@@ -956,19 +990,26 @@ const getInitials = (name: string) =>
             } catch (err: any) {
               console.error("❌ SMS send error:", err);
               toast.error(err.message || "Failed to send SMS.");
+              // ⏬ revert toggle if sending fails
+              setShowPhoneInput(false);
             }
           }}
         >
           Send Code
         </Button>
 
-        <Button variant="outline" onClick={() => setShowPhoneInput(false)}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setShowPhoneInput(false);
+            setMfaEnabled(false);
+          }}
+        >
           Cancel
         </Button>
       </div>
     )}
 
-    {/* ✅ Step 2: Code input + Verify button */}
     {isCodeSent && (
       <div className="flex flex-col space-y-2">
         <Label htmlFor="verificationCode">Enter 6-digit Code</Label>
@@ -995,7 +1036,10 @@ const getInitials = (name: string) =>
                   return;
                 }
 
-                const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
+                const credential = PhoneAuthProvider.credential(
+                  verificationId,
+                  verificationCode
+                );
                 const assertion = PhoneMultiFactorGenerator.assertion(credential);
 
                 await multiFactor(auth.currentUser!).enroll(assertion, "Primary phone");
@@ -1008,6 +1052,9 @@ const getInitials = (name: string) =>
               } catch (err: any) {
                 console.error("❌ Code verification error:", err);
                 toast.error(err.message || "Invalid or expired code.");
+                // ⏬ revert toggle on failure
+                setMfaEnabled(false);
+                setShowPhoneInput(false);
               }
             }}
           >
@@ -1018,34 +1065,18 @@ const getInitials = (name: string) =>
     )}
   </div>
 )}
-    {/* ✅ reCAPTCHA container */}
-    <div id="recaptcha-container"></div>
 
-    {/* ✅ Status message after enabled */}
-    {mfaEnabled && (
-      <div className="mt-4 text-xs text-green-700 bg-green-50 rounded-md p-2">
-        ✓ Your account is protected with SMS-based two-factor authentication
-      </div>
-    )}
-  </CardContent>
-</Card>
-{!isEmailProvider && (
-  <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3 mt-3">
-    ⚠️ Your account is connected through{" "}
-    <strong>
-      {auth.currentUser?.providerData
-        ?.map((p) => p.providerId.replace(".com", "").toUpperCase())
-        .join(", ")}
-    </strong>.
-    <br />
-    SMS-based multi-factor authentication is only supported for
-    <strong> email/password sign-ins.</strong> 
-    <br />
-    You can link an email and password in your profile settings to enable MFA.
+{/* ✅ reCAPTCHA container */}
+<div id="recaptcha-container"></div>
+
+{/* ✅ Status message after enabled */}
+{mfaEnabled && (
+  <div className="mt-4 text-xs text-green-700 bg-green-50 rounded-md p-2 animate-fadeIn">
+    ✓ Your account is protected with SMS-based two-factor authentication
   </div>
 )}
-
-
+  </CardContent>
+</Card>
 
                 {/* Change Password */}
                 <Card className="hover:shadow-md transition-shadow">
@@ -1249,7 +1280,7 @@ const getInitials = (name: string) =>
             {activityLog.slice(0, visibleLogs).map((entry, index) => (
               <div
                 key={entry.id}
-                className="p-4 hover:bg-muted/30 transition-colors animate-fadeIn"
+                className="p-6 hover:bg-muted/30 transition-colors animate-fadeIn"
                 style={{ animationDelay: `${index * 50}ms` }}
               >
                 <div className="flex items-start justify-between">
@@ -1279,12 +1310,12 @@ const getInitials = (name: string) =>
 
           {/* Load More / Show Less */}
           {activityLog.length > 5 && (
-            <div className="text-center pt-3">
+            <div className="text-center pt-3 px-6">
               {visibleLogs < activityLog.length ? (
                 <Button
                   variant="outline"
                   onClick={() => setVisibleLogs((prev) => prev + 5)}
-                  className="transition-all duration-200 hover:shadow-sm"
+                  className="w-full transition-all duration-200 hover:shadow-sm"
                 >
                   Load More
                 </Button>
@@ -1295,7 +1326,7 @@ const getInitials = (name: string) =>
                     setVisibleLogs(5);
                     activitySectionRef.current?.scrollIntoView({ behavior: "smooth" });
                   }}
-                  className="text-muted-foreground hover:text-foreground transition-all duration-200"
+                  className="w-full text-muted-foreground hover:text-foreground transition-all duration-200"
                 >
                   Show Less
                 </Button>
@@ -1319,9 +1350,9 @@ const getInitials = (name: string) =>
                   <div className="flex items-center space-x-4">
                     <Eye className="w-5 h-5 text-blue-600" />
                     <div>
-                      <h4>Export Your Data</h4>
+                      <h4>Export Your Activity Log</h4>
                       <p className="text-sm text-muted-foreground">
-                        Download a copy of all your data in JSON
+                        Download a copy of all your activity log in JSON
                         format
                       </p>
                     </div>
@@ -1337,7 +1368,7 @@ const getInitials = (name: string) =>
                       });
                     }}
                   >
-                    Export Data
+                    Export Log
                   </Button>
                 </div>
 
