@@ -956,82 +956,115 @@ export function RewardsAndPartnersPage({ onNavigateToUploadData, onDataShareAcce
       handleFileUpload(files[0]);
     }
   };
+async function sendToAI(file: File): Promise<{ ok: boolean; result?: string; error?: string; recordsCount?: number }> {
+  const form = new FormData();
+  form.append("file", file);
 
-  const handleFileUpload = (file: File) => {
-    setUploadError('');
-    
-    if (!selectedUploadCategory) {
-      toast.error('Please select a data category first.');
-      return;
+  const res = await fetch("http://localhost:5000/ai-validate", {
+    method: "POST",
+    body: form,
+  });
+
+  // If your server is not running or CORS blocked:
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    return { ok: false, error: `AI server error (${res.status}). ${text}` };
+  }
+  return res.json();
+}
+
+const handleFileUpload = async (file: File) => {
+  setUploadError('');
+
+  if (!selectedUploadCategory) {
+    toast.error('Please select a data category first.');
+    return;
+  }
+
+  const allowedTypes = ['.csv', '.json', '.xlsx', '.xls', '.pdf', '.txt', '.xml', '.docx', '.zip'];
+  const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+
+  if (!allowedTypes.includes(fileExtension)) {
+    const errorMsg = 'Unsupported file type. Please upload in one of the accepted formats.';
+    setUploadError(errorMsg);
+    toast.error(errorMsg);
+    return;
+  }
+
+  // Start your UI progress
+  setIsUploading(true);
+  setUploadProgress(0);
+
+  // Animate progress up to 95% while AI runs
+  const uploadInterval = setInterval(() => {
+    setUploadProgress((prev) => (prev >= 95 ? 95 : prev + 7));
+  }, 200);
+
+  try {
+    // 🔥 Step 6: call your AI server here
+    const ai = await sendToAI(file);
+
+    // Stop progress animation and finish
+    clearInterval(uploadInterval);
+    setUploadProgress(100);
+    setIsUploading(false);
+
+    const uploadSuccess = !!ai.ok;
+    const categoryName = DATA_CATEGORIES.find(c => c.id === selectedUploadCategory)?.label;
+
+    const newDataset: UploadedDataset = {
+      id: Date.now(),
+      name: file.name,
+      size: formatFileSize(file.size),
+      uploadDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      status: uploadSuccess ? 'success' : 'error',
+      recordsCount: ai.recordsCount ?? (uploadSuccess ? Math.floor(Math.random() * 5000) + 100 : 0),
+      category: selectedUploadCategory,
+      fileType: fileExtension.replace('.', '')
+    };
+
+    setUploadedDatasets((prev) => [newDataset, ...prev]);
+
+    if (uploadSuccess) {
+      toast.success(`${file.name} passed AI validation for ${categoryName || selectedUploadCategory}!`, {
+        description: (ai.result || 'This dataset is now available for partner requests.').slice(0, 300)
+      });
+      addActivityLog?.({
+        action: "File uploaded successfully",
+        partner: "User Upload",
+        dataType: categoryName || selectedUploadCategory,
+        status: "success",
+      });
+    } else {
+      const msg = ai.error || ai.result || 'AI validation failed.';
+      setUploadError(msg);
+      toast.error(`Failed to upload ${file.name}`, {
+        description: msg.slice(0, 300),
+      });
+      addActivityLog?.({
+        action: "File upload failed",
+        partner: "User Upload",
+        dataType: categoryName || selectedUploadCategory,
+        status: "warning",
+      });
     }
-
-    const allowedTypes = ['.csv', '.json', '.xlsx', '.xls', '.pdf', '.txt', '.xml', '.docx', '.zip'];
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-    
-    if (!allowedTypes.includes(fileExtension)) {
-      const errorMsg = 'Unsupported file type. Please upload in one of the accepted formats.';
-      setUploadError(errorMsg);
-      toast.error(errorMsg);
-      return;
-    }
-
-    setIsUploading(true);
+  } catch (err: any) {
+    // Hard error talking to AI
+    clearInterval(uploadInterval);
+    setIsUploading(false);
     setUploadProgress(0);
 
-    const uploadInterval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(uploadInterval);
-          setIsUploading(false);
-          
-          // Randomly assign success or error status (90% success rate)
-          const uploadSuccess = Math.random() > 0.1;
-          
-          const newDataset: UploadedDataset = {
-            id: Date.now(),
-            name: file.name,
-            size: formatFileSize(file.size),
-            uploadDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-            status: uploadSuccess ? 'success' : 'error',
-            recordsCount: uploadSuccess ? Math.floor(Math.random() * 5000) + 100 : 0,
-            category: selectedUploadCategory,
-            fileType: fileExtension.replace('.', '')
-          };
-          
-          setUploadedDatasets((prev) => [newDataset, ...prev]);
-          const categoryName = DATA_CATEGORIES.find(c => c.id === selectedUploadCategory)?.label;
-          
-          if (uploadSuccess) {
-            toast.success(`${file.name} uploaded successfully to ${categoryName}!`, {
-              description: 'This dataset is now available for partner requests.'
-            });
-            // ✅ NEW: log this upload
-  addActivityLog?. ({
-    action: "File uploaded successfully",
-    partner: "User Upload",
-    dataType: categoryName || selectedUploadCategory,
-    status: "success",
-  });
-} else {
-  toast.error(`Failed to upload ${file.name}`, {
-    description: 'There was an error processing your file. Please try again.',
-  });
-
-  // ✅ NEW: log failed upload
-  addActivityLog?. ({
-    action: "File upload failed",
-    partner: "User Upload",
-    dataType: categoryName || selectedUploadCategory,
-    status: "warning",
-  });
-}
-          
-          return 0;
-        }
-        return prev + 10;
-      });
-    }, 200);
-  };
+    const msg = String(err?.message || err);
+    setUploadError(msg);
+    toast.error('Upload failed', { description: msg });
+    addActivityLog?.({
+      action: "File upload failed",
+      partner: "User Upload",
+      dataType: selectedUploadCategory,
+      status: "warning",
+    });
+  }
+};
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
