@@ -886,18 +886,24 @@ const getInitials = (name: string) =>
           {mfaEnabled ? "Enabled" : "Disabled"}
         </Label>
         <Switch
-          id="mfa-toggle"
-          checked={mfaEnabled}
-          onCheckedChange={(checked) => {
-            if (checked) {
-              // User is turning MFA on → show input
-              setShowPhoneInput(true);
-            } else {
-              // User turning MFA off → disable MFA directly
-              handleToggleMfa(false);
-            }
-          }}
-        />
+  id="mfa-toggle"
+  checked={mfaEnabled}
+  disabled={!isEmailProvider} // 🚫 disable if not email/password
+  onCheckedChange={(checked) => {
+    if (!isEmailProvider) {
+      toast.info(
+        "MFA is only available for email/password accounts. Linked Google or Facebook accounts cannot use SMS verification."
+      );
+      return;
+    }
+
+    if (checked) {
+      setShowPhoneInput(true);
+    } else {
+      handleToggleMfa(false);
+    }
+  }}
+/>
       </div>
     </div>
 
@@ -1023,6 +1029,22 @@ const getInitials = (name: string) =>
     )}
   </CardContent>
 </Card>
+{!isEmailProvider && (
+  <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3 mt-3">
+    ⚠️ Your account is connected through{" "}
+    <strong>
+      {auth.currentUser?.providerData
+        ?.map((p) => p.providerId.replace(".com", "").toUpperCase())
+        .join(", ")}
+    </strong>.
+    <br />
+    SMS-based multi-factor authentication is only supported for
+    <strong> email/password sign-ins.</strong> 
+    <br />
+    You can link an email and password in your profile settings to enable MFA.
+  </div>
+)}
+
 
 
                 {/* Change Password */}
