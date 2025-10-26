@@ -389,14 +389,18 @@ const handleSubmit = async (e: React.FormEvent) => {
   className="bg-green-600 text-white hover:bg-green-700"
   onClick={async () => {
     try {
+      setLoading(true); // 🟢 Start loading - will show spinner
+
       if (!verificationId) {
         toast.error("Missing verification ID. Please sign in again.");
+        setLoading(false);
         return;
       }
 
       const resolver = (window as any).mfaResolver;
       if (!resolver) {
         toast.error("Missing MFA session. Please sign in again.");
+        setLoading(false);
         return;
       }
 
@@ -417,10 +421,19 @@ const handleSubmit = async (e: React.FormEvent) => {
     } catch (err: any) {
       console.error("❌ MFA verification error:", err);
       toast.error(err.message || "Invalid or expired code. Try again.");
+    } finally {
+      setLoading(false); setLoading(true); // 🟢 Start loading - will show spinner
     }
   }}
 >
-  Verify
+  {loading ? (
+    <>
+      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+      Verifying...
+    </>
+  ) : (
+    "Verify"
+  )}
 </Button>
     </div>
   </div>
