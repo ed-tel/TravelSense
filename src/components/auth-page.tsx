@@ -400,10 +400,14 @@ const handleSubmit = async (e: React.FormEvent) => {
             const multiFactorAssertion =
               PhoneMultiFactorGenerator.assertion(cred);
 
-            const resolver = getMultiFactorResolver(auth, (window as any).mfaError);
-            const finalUserCred = await resolver.resolveSignIn(
-              multiFactorAssertion
-            );
+            const resolver = (window as any).mfaResolver;
+if (!resolver) {
+  toast.error("Missing MFA session. Please sign in again.");
+  return;
+}
+
+const finalUserCred = await resolver.resolveSignIn(multiFactorAssertion);
+
 
             toast.success("✅ Signed in with MFA successfully!");
             setShowMfaCodeInput(false);
