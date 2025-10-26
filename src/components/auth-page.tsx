@@ -150,6 +150,8 @@ const handleSubmit = async (e: React.FormEvent) => {
       console.warn("🔒 MFA required for this account");
 
       const resolver = getMultiFactorResolver(auth, error);
+  (window as any).mfaResolver = resolver; // save exact resolver
+  console.log("MFA resolver:", resolver);
 
       // ✅ Initialize reCAPTCHA if not already
       if (!window.recaptchaVerifier) {
@@ -174,7 +176,6 @@ const handleSubmit = async (e: React.FormEvent) => {
       // ✅ Show inline MFA input
       setVerificationId(verificationId);
       setShowMfaCodeInput(true);
-      (window as any).mfaResolver = resolver; // store for verification step
       toast.info("Enter the 6-digit code sent to your phone.");
       setLoading(false); // stop loading spinner while waiting for user
       return; // ⛔ stop here — wait for user to verify code
@@ -384,39 +385,43 @@ const handleSubmit = async (e: React.FormEvent) => {
         className="text-center tracking-widest font-mono"
       />
       <Button
-        type="button"
-        className="bg-green-600 text-white hover:bg-green-700"
-        onClick={async () => {
-          try {
-            if (!verificationId) {
-              toast.error("Missing verification ID. Try signing in again.");
-              return;
-            }
+  type="button"
+  className="bg-green-600 text-white hover:bg-green-700"
+  onClick={async () => {
+    try {
+      if (!verificationId) {
+        toast.error("Missing verification ID. Please sign in again.");
+        return;
+      }
 
-            const cred = PhoneAuthProvider.credential(
-              verificationId,
-              verificationCode
-            );
-            const multiFactorAssertion =
-              PhoneMultiFactorGenerator.assertion(cred);
+      const resolver = (window as any).mfaResolver;
+      if (!resolver) {
+        toast.error("Missing MFA session. Please sign in again.");
+        return;
+      }
 
-            const resolver = getMultiFactorResolver(auth, (window as any).mfaError);
-            const finalUserCred = await resolver.resolveSignIn(
-              multiFactorAssertion
-            );
+      const cred = PhoneAuthProvider.credential(verificationId, verificationCode);
+      const multiFactorAssertion = PhoneMultiFactorGenerator.assertion(cred);
 
-            toast.success("✅ Signed in with MFA successfully!");
-            setShowMfaCodeInput(false);
-            setVerificationCode("");
-            if (onSignIn) onSignIn();
-          } catch (err: any) {
-            console.error("❌ MFA verification error:", err);
-            toast.error("Invalid or expired code. Try again.");
-          }
-        }}
-      >
-        Verify
-      </Button>
+      console.log("Using resolver:", resolver);
+
+      const finalUserCred = await resolver.resolveSignIn(multiFactorAssertion);
+
+      console.log("✅ MFA Sign-in complete:", finalUserCred);
+      toast.success("Signed in successfully with MFA!");
+
+      setShowMfaCodeInput(false);
+      setVerificationCode("");
+      delete (window as any).mfaResolver;
+      if (onSignIn) onSignIn();
+    } catch (err: any) {
+      console.error("❌ MFA verification error:", err);
+      toast.error(err.message || "Invalid or expired code. Try again.");
+    }
+  }}
+>
+  Verify
+</Button>
     </div>
   </div>
 )}
