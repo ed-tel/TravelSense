@@ -160,6 +160,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       { size: "invisible" }
     );
     await window.recaptchaVerifier.render();
+    setLoading(true);
   }
 
   const phoneInfoOptions = {
