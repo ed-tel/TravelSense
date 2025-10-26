@@ -350,32 +350,42 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 const handleToggleMfa = async (enabled: boolean) => {
   const user = auth.currentUser;
 
-  if (!isEmailProvider) {
-    toast.info("MFA is available only for email/password accounts.");
-    return;
-  }
-
+  // 1️⃣ Check user context
   if (!user) {
     toast.error("No authenticated user found.");
     return;
   }
 
-  if (!enabled) {
-    // Disable MFA
-    try {
-      const enrolledFactors = multiFactor(user).enrolledFactors;
-      for (const factor of enrolledFactors) {
-        await multiFactor(user).unenroll(factor.uid);
-      }
-      toast.success("MFA disabled successfully.");
-      setMfaEnabled(false);
-    } catch (error: any) {
-      console.error(error);
-      toast.error("Failed to disable MFA.");
-    }
+  // 2️⃣ Block non-email/password users
+  if (!isEmailProvider) {
+    toast.info("MFA is only available for email/password accounts.");
     return;
   }
 
+  // 3️⃣ DISABLE MFA (unenroll factors)
+  if (!enabled) {
+    try {
+      const enrolledFactors = multiFactor(user).enrolledFactors;
+
+      if (enrolledFactors.length === 0) {
+        toast.info("MFA is already disabled.");
+        setMfaEnabled(false);
+        return;
+      }
+
+      // 🟢 Usually only one phone factor, but loop safely
+      for (const factor of enrolledFactors) {
+        await multiFactor(user).unenroll(factor.uid);
+      }
+
+      toast.success("✅ Multi-Factor Authentication disabled successfully.");
+      setMfaEnabled(false);
+    } catch (error: any) {
+      console.error("❌ MFA disable error:", error);
+      toast.error(error.message || "Failed to disable MFA.");
+    }
+    return;
+  }
   // Enable MFA
   try {
     const phoneProvider = new PhoneAuthProvider(auth);
@@ -443,6 +453,33 @@ const handleDeleteAllData = () => {
   }
 };
 
+const handleDisableMfa = async () => {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      toast.error("No signed-in user.");
+      return;
+    }
+
+    const enrolledFactors = multiFactor(user).enrolledFactors;
+
+    if (enrolledFactors.length === 0) {
+      toast.info("No MFA factors to remove.");
+      return;
+    }
+
+    // Usually, there's only one enrolled phone factor
+    const factorUid = enrolledFactors[0].uid;
+
+    await multiFactor(user).unenroll(factorUid);
+
+    toast.success("Multi-Factor Authentication disabled successfully!");
+    setMfaEnabled(false); // 🔄 Reflect in UI
+  } catch (err: any) {
+    console.error("❌ Error disabling MFA:", err);
+    toast.error(err.message || "Failed to disable MFA.");
+  }
+};
 
 const handleChangePassword = async () => {
   const user = auth.currentUser;
@@ -890,8 +927,9 @@ const getInitials = (name: string) =>
     </Label>
 
     <Switch
-      id="mfa-toggle"
-      checked={mfaEnabled || showPhoneInput || tempToggle}
+  key={mfaEnabled ? "on" : "off"}
+  id="mfa-toggle"
+  checked={mfaEnabled || showPhoneInput || tempToggle}
       onCheckedChange={(checked) => {
         // 👇 If not email provider and trying to enable MFA
         if (!isEmailProvider && checked) {
@@ -916,10 +954,12 @@ const getInitials = (name: string) =>
         if (checked) {
           setShowPhoneInput(true);
           setShowMfaWarning(false);
+          setTempToggle(false);
         } else {
           handleToggleMfa(false);
           setShowPhoneInput(false);
           setShowMfaWarning(false);
+          setTempToggle(false);
         }
       }}
     />
