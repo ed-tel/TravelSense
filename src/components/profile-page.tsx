@@ -14,7 +14,8 @@ import {
   Activity,
   CheckCircle,
   EyeOff,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from "lucide-react";
 import {
   Card,
@@ -156,8 +157,7 @@ const [verificationId, setVerificationId] = useState<string | null>(null);
 const [isCodeSent, setIsCodeSent] = useState(false);
 const [tempToggle, setTempToggle] = useState(false);
 const [showMfaWarning, setShowMfaWarning] = useState(false);
-
-
+const [loading, setLoading] = useState(false);
 
 const checkMfaStatus = () => {
   const user = auth.currentUser;
@@ -930,6 +930,7 @@ const getInitials = (name: string) =>
   key={mfaEnabled ? "on" : "off"}
   id="mfa-toggle"
   checked={mfaEnabled || showPhoneInput || tempToggle}
+  disabled={loading || !isEmailProvider} // 🟢 added “loading”
       onCheckedChange={(checked) => {
         // 👇 If not email provider and trying to enable MFA
         if (!isEmailProvider && checked) {
@@ -1003,40 +1004,56 @@ const getInitials = (name: string) =>
     {!isCodeSent && (
       <div className="flex justify-end space-x-2 mt-2">
         <Button
-          className="bg-blue-600 text-white hover:bg-blue-700"
-          onClick={async () => {
-            try {
-              const recaptchaVerifier = window.recaptchaVerifier;
-              if (!recaptchaVerifier) {
-                toast.error("reCAPTCHA not ready. Please reload the page.");
-                return;
-              }
+  type="button"
+  disabled={loading}
+  className={`bg-blue-600 text-white hover:bg-blue-700 flex items-center justify-center ${
+    loading ? "opacity-80 cursor-not-allowed" : ""
+  }`}
+  onClick={async () => {
+    try {
+      setLoading(true); // 🟢 Start spinner
 
-              if (!phoneNumber || phoneNumber.trim().length < 8) {
-                toast.error("Please enter a valid phone number.");
-                return;
-              }
+      const recaptchaVerifier = window.recaptchaVerifier;
+      if (!recaptchaVerifier) {
+        toast.error("reCAPTCHA not ready. Please reload the page.");
+        setLoading(false);
+        return;
+      }
 
-              console.log("📱 Sending SMS to:", phoneNumber);
-              const phoneProvider = new PhoneAuthProvider(auth);
-              const id = await phoneProvider.verifyPhoneNumber(
-                phoneNumber,
-                recaptchaVerifier
-              );
+      if (!phoneNumber || phoneNumber.trim().length < 8) {
+        toast.error("Please enter a valid phone number.");
+        setLoading(false);
+        return;
+      }
 
-              setVerificationId(id);
-              setIsCodeSent(true);
-              toast.success("Verification code sent! Check your SMS.");
-            } catch (err: any) {
-              console.error("❌ SMS send error:", err);
-              toast.error(err.message || "Failed to send SMS.");
-              // ⏬ revert toggle if sending fails
-              setShowPhoneInput(false);
-            }
-          }}
-        >
-          Send Code
-        </Button>
+      console.log("📱 Sending SMS to:", phoneNumber);
+      const phoneProvider = new PhoneAuthProvider(auth);
+      const id = await phoneProvider.verifyPhoneNumber(
+        phoneNumber,
+        recaptchaVerifier
+      );
+
+      setVerificationId(id);
+      setIsCodeSent(true);
+      toast.success("Verification code sent! Check your SMS.");
+    } catch (err: any) {
+      console.error("❌ SMS send error:", err);
+      toast.error(err.message || "Failed to send SMS.");
+      setShowPhoneInput(false);
+    } finally {
+      setLoading(false); // 🔵 Stop spinner
+    }
+  }}
+>
+  {loading ? (
+    <>
+      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+      Sending...
+    </>
+  ) : (
+    "Send Code"
+  )}
+</Button>
 
         <Button
           variant="outline"
@@ -1063,43 +1080,56 @@ const getInitials = (name: string) =>
             maxLength={6}
           />
           <Button
-            className="bg-green-600 text-white hover:bg-green-700"
-            onClick={async () => {
-              try {
-                if (!verificationId) {
-                  toast.error("Missing verification ID. Try sending the code again.");
-                  return;
-                }
+  type="button"
+  disabled={loading}
+  className={`bg-green-600 text-white hover:bg-green-700 flex items-center justify-center ${
+    loading ? "opacity-80 cursor-not-allowed" : ""
+  }`}
+  onClick={async () => {
+    try {
+      setLoading(true); // 🟢 Start spinner (shared with toggle)
 
-                if (verificationCode.trim().length !== 6) {
-                  toast.error("Please enter a valid 6-digit code.");
-                  return;
-                }
+      if (!verificationId) {
+        toast.error("Missing verification ID. Try sending the code again.");
+        setLoading(false);
+        return;
+      }
 
-                const credential = PhoneAuthProvider.credential(
-                  verificationId,
-                  verificationCode
-                );
-                const assertion = PhoneMultiFactorGenerator.assertion(credential);
+      if (verificationCode.trim().length !== 6) {
+        toast.error("Please enter a valid 6-digit code.");
+        setLoading(false);
+        return;
+      }
 
-                await multiFactor(auth.currentUser!).enroll(assertion, "Primary phone");
+      const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
+      const assertion = PhoneMultiFactorGenerator.assertion(credential);
 
-                toast.success("✅ MFA enabled successfully!");
-                setMfaEnabled(true);
-                setShowPhoneInput(false);
-                setIsCodeSent(false);
-                setVerificationCode("");
-              } catch (err: any) {
-                console.error("❌ Code verification error:", err);
-                toast.error(err.message || "Invalid or expired code.");
-                // ⏬ revert toggle on failure
-                setMfaEnabled(false);
-                setShowPhoneInput(false);
-              }
-            }}
-          >
-            Verify Code
-          </Button>
+      console.log("🔐 Enrolling phone MFA...");
+      await multiFactor(auth.currentUser!).enroll(assertion, "Primary phone");
+
+      toast.success("✅ MFA enabled successfully!");
+      setMfaEnabled(true);
+      setShowPhoneInput(false);
+      setIsCodeSent(false);
+      setVerificationCode("");
+    } catch (err: any) {
+      console.error("❌ Code verification error:", err);
+      toast.error(err.message || "Invalid or expired code.");
+    } finally {
+      setLoading(false); // 🔵 Stop spinner when done
+    }
+  }}
+>
+  {loading ? (
+    <>
+      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+      Verifying...
+    </>
+  ) : (
+    "Verify Code"
+  )}
+</Button>
+
         </div>
       </div>
     )}
@@ -1305,7 +1335,7 @@ const getInitials = (name: string) =>
 
             {/* Activity Log */}
 <div ref={activitySectionRef} className="space-y-4">
-  <h3>Recent Activity</h3>
+  <h3>Audit Log</h3>
   <Card>
     <CardContent className="p-0">
       {activityLog.length === 0 ? (
@@ -1390,9 +1420,9 @@ const getInitials = (name: string) =>
                   <div className="flex items-center space-x-4">
                     <Eye className="w-5 h-5 text-blue-600" />
                     <div>
-                      <h4>Export Your Activity Log</h4>
+                      <h4>Export Your Audit Log</h4>
                       <p className="text-sm text-muted-foreground">
-                        Download a copy of all your activity log in JSON
+                        Download a copy of your audit log in JSON
                         format
                       </p>
                     </div>
@@ -1455,9 +1485,6 @@ const getInitials = (name: string) =>
                             </li>
                             <li>
                               Reset your earned rewards to zero
-                            </li>
-                            <li>
-                              Clear all active permissions
                             </li>
                           </ul>
                           <p className="mt-3">
