@@ -147,40 +147,39 @@ const handleSubmit = async (e: React.FormEvent) => {
   } catch (error: any) {
     // 🟡 Handle MFA-required case
     if (error.code === "auth/multi-factor-auth-required") {
-      console.warn("🔒 MFA required for this account");
+  console.warn("🔒 MFA required for this account");
 
-      const resolver = getMultiFactorResolver(auth, error);
-  (window as any).mfaResolver = resolver; // save exact resolver
-  console.log("MFA resolver:", resolver);
+  const resolver = getMultiFactorResolver(auth, error);
+  (window as any).mfaResolver = resolver;
 
-      // ✅ Initialize reCAPTCHA if not already
-      if (!window.recaptchaVerifier) {
-        window.recaptchaVerifier = new (RecaptchaVerifier as any)(
-          auth,                   // ✅ Auth instance FIRST
-          "recaptcha-container",  // ✅ element ID
-          { size: "invisible" }   // ✅ config LAST
-        );
-      }
+  // ✅ Initialize reCAPTCHA (new syntax)
+  if (!window.recaptchaVerifier) {
+    window.recaptchaVerifier = new RecaptchaVerifier(
+      auth,
+      "recaptcha-container",
+      { size: "invisible" }
+    );
+    await window.recaptchaVerifier.render();
+  }
 
-      const phoneInfoOptions = {
-        multiFactorHint: resolver.hints[0],
-        session: resolver.session,
-      };
+  const phoneInfoOptions = {
+    multiFactorHint: resolver.hints[0],
+    session: resolver.session,
+  };
 
-      const phoneAuthProvider = new PhoneAuthProvider(auth);
-      const verificationId = await phoneAuthProvider.verifyPhoneNumber(
-        phoneInfoOptions,
-        window.recaptchaVerifier
-      );
+  const phoneAuthProvider = new PhoneAuthProvider(auth);
+  const verificationId = await phoneAuthProvider.verifyPhoneNumber(
+    phoneInfoOptions,
+    window.recaptchaVerifier
+  );
 
-      // ✅ Show inline MFA input
-      setVerificationId(verificationId);
-      setShowMfaCodeInput(true);
-      toast.info("Enter the 6-digit code sent to your phone.");
-      setLoading(false); // stop loading spinner while waiting for user
-      return; // ⛔ stop here — wait for user to verify code
-    }
-
+  // ✅ Show inline MFA input and stop spinner
+  setVerificationId(verificationId);
+  setShowMfaCodeInput(true);
+  setLoading(false);
+  toast.info("Enter the 6-digit code sent to your phone.");
+  return; // ⛔ wait for Verify click
+}
     // 🟥 Regular error handling for non-MFA cases
     console.error("Sign-in error:", error.message);
 
@@ -388,41 +387,34 @@ const handleSubmit = async (e: React.FormEvent) => {
   type="button"
   className="bg-green-600 text-white hover:bg-green-700"
   onClick={async () => {
+    setLoading(true);
     try {
-      setLoading(true); // 🟢 Start loading - will show spinner
-
       if (!verificationId) {
         toast.error("Missing verification ID. Please sign in again.");
-        setLoading(false);
         return;
       }
 
       const resolver = (window as any).mfaResolver;
       if (!resolver) {
         toast.error("Missing MFA session. Please sign in again.");
-        setLoading(false);
         return;
       }
 
       const cred = PhoneAuthProvider.credential(verificationId, verificationCode);
-      const multiFactorAssertion = PhoneMultiFactorGenerator.assertion(cred);
+      const assertion = PhoneMultiFactorGenerator.assertion(cred);
 
-      console.log("Using resolver:", resolver);
-
-      const finalUserCred = await resolver.resolveSignIn(multiFactorAssertion);
-
-      console.log("✅ MFA Sign-in complete:", finalUserCred);
-      toast.success("Signed in successfully with MFA!");
-
+      const finalUserCred = await resolver.resolveSignIn(assertion);
+      toast.success("✅ Signed in successfully with MFA!");
       setShowMfaCodeInput(false);
       setVerificationCode("");
       delete (window as any).mfaResolver;
+
       if (onSignIn) onSignIn();
     } catch (err: any) {
       console.error("❌ MFA verification error:", err);
-      toast.error(err.message || "Invalid or expired code. Try again.");
+      toast.error(err.message || "Invalid or expired code.");
     } finally {
-      setLoading(false); setLoading(true); // 🟢 Start loading - will show spinner
+      setLoading(false);
     }
   }}
 >
