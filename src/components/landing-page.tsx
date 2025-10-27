@@ -80,12 +80,15 @@ interface LandingPageProps {
   onGetStarted?: () => void;
   onSignIn?: () => void;
   onBusinessSignIn?: () => void;
+  // NEW: callback to open the Contact page
+  onNavigateToContact?: () => void;
 }
 
 export function LandingPage({
   onGetStarted,
   onSignIn,
   onBusinessSignIn,
+  onNavigateToContact,
 }: LandingPageProps = {}) {
   const [isNavOpen, setIsNavOpen] = useState(false);
 
@@ -132,9 +135,7 @@ export function LandingPage({
             </div>
 
             <div className="hidden md:flex items-center space-x-4">
-              <Button onClick={onSignIn}>
-                Sign In
-              </Button>
+              <Button onClick={onSignIn}>Sign In</Button>
             </div>
 
             {/* Mobile Menu Button */}
@@ -144,11 +145,7 @@ export function LandingPage({
               className="md:hidden"
               onClick={() => setIsNavOpen(!isNavOpen)}
             >
-              {isNavOpen ? (
-                <X className="w-4 h-4" />
-              ) : (
-                <Menu className="w-4 h-4" />
-              )}
+              {isNavOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
             </Button>
           </div>
 
@@ -182,9 +179,7 @@ export function LandingPage({
                   For Business
                 </Button>
                 <div className="flex flex-col space-y-2 pt-4">
-                  <Button onClick={onSignIn}>
-                    Sign In
-                  </Button>
+                  <Button onClick={onSignIn}>Sign In</Button>
                 </div>
               </div>
             </div>
@@ -203,60 +198,37 @@ export function LandingPage({
         </div>
         <div className="container mx-auto px-6 relative">
           <div className="max-w-4xl mx-auto text-center">
-            <Badge className="mb-6">
-              🇳🇿 Revolutionizing New Zealand Tourism
-            </Badge>
+            <Badge className="mb-6">🇳🇿 Revolutionizing New Zealand Tourism</Badge>
             <h1 className="text-4xl md:text-6xl font-medium mb-6">
               Your Data, Your Control, <br />
               <span className="text-primary">Your Rewards</span>
             </h1>
             <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-              Join TravelSense and take control of your travel
-              data. Share what you want, earn real rewards, and
-              help create better tourism experiences across New
-              Zealand.
+              Join TravelSense and take control of your travel data. Share what you
+              want, earn real rewards, and help create better tourism experiences
+              across New Zealand.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button
-                size="lg"
-                className="text-lg px-8"
-                onClick={onGetStarted}
-              >
+              <Button size="lg" className="text-lg px-8" onClick={onGetStarted}>
                 Start Earning Today
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="text-lg px-8"
-              >
+              <Button size="lg" variant="outline" className="text-lg px-8">
                 See How It Works
               </Button>
             </div>
             <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
               <div>
-                <div className="text-3xl font-medium text-primary">
-                  $456
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Average earnings per user
-                </div>
+                <div className="text-3xl font-medium text-primary">$456</div>
+                <div className="text-sm text-muted-foreground">Average earnings per user</div>
               </div>
               <div>
-                <div className="text-3xl font-medium text-primary">
-                  98%
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  User privacy satisfaction
-                </div>
+                <div className="text-3xl font-medium text-primary">98%</div>
+                <div className="text-sm text-muted-foreground">User privacy satisfaction</div>
               </div>
               <div>
-                <div className="text-3xl font-medium text-primary">
-                  50+
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Trusted tourism partners
-                </div>
+                <div className="text-3xl font-medium text-primary">50+</div>
+                <div className="text-sm text-muted-foreground">Trusted tourism partners</div>
               </div>
             </div>
           </div>
@@ -271,27 +243,19 @@ export function LandingPage({
               Why Choose TravelSense?
             </h2>
             <p className="text-xl text-muted-foreground">
-              We're changing how tourism data works in New
-              Zealand. Put yourself in control and get rewarded
-              for your valuable insights.
+              We're changing how tourism data works in New Zealand. Put yourself in
+              control and get rewarded for your valuable insights.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {features.map((feature, index) => (
-              <Card
-                key={index}
-                className="text-center hover:shadow-lg transition-shadow"
-              >
+              <Card key={index} className="text-center hover:shadow-lg transition-shadow">
                 <CardContent className="p-6">
                   <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mx-auto mb-4">
                     <feature.icon className="w-6 h-6 text-primary" />
                   </div>
-                  <h3 className="font-medium mb-2">
-                    {feature.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {feature.description}
-                  </p>
+                  <h3 className="font-medium mb-2">{feature.title}</h3>
+                  <p className="text-sm text-muted-foreground">{feature.description}</p>
                 </CardContent>
               </Card>
             ))}
@@ -303,12 +267,10 @@ export function LandingPage({
       <section id="how-it-works" className="py-20">
         <div className="container mx-auto px-6">
           <div className="max-w-3xl mx-auto text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-medium mb-6">
-              How TravelSense Works
-            </h2>
+            <h2 className="text-3xl md:text-4xl font-medium mb-6">How TravelSense Works</h2>
             <p className="text-xl text-muted-foreground">
-              Simple, transparent, and rewarding. Here's how you
-              can start earning from your travel data.
+              Simple, transparent, and rewarding. Here's how you can start earning from
+              your travel data.
             </p>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
@@ -318,12 +280,9 @@ export function LandingPage({
                   1
                 </div>
                 <div>
-                  <h3 className="font-medium mb-2">
-                    Sign Up & Set Preferences
-                  </h3>
+                  <h3 className="font-medium mb-2">Sign Up & Set Preferences</h3>
                   <p className="text-muted-foreground">
-                    Create your account and choose what types of
-                    data you're comfortable sharing. You're
+                    Create your account and choose what types of data you're comfortable sharing. You're
                     always in control.
                   </p>
                 </div>
@@ -333,12 +292,9 @@ export function LandingPage({
                   2
                 </div>
                 <div>
-                  <h3 className="font-medium mb-2">
-                    Connect with Partners
-                  </h3>
+                  <h3 className="font-medium mb-2">Connect with Partners</h3>
                   <p className="text-muted-foreground">
-                    Browse and connect with verified tourism
-                    partners who want to provide you with better
+                    Browse and connect with verified tourism partners who want to provide you with better
                     services.
                   </p>
                 </div>
@@ -348,12 +304,9 @@ export function LandingPage({
                   3
                 </div>
                 <div>
-                  <h3 className="font-medium mb-2">
-                    Share & Earn
-                  </h3>
+                  <h3 className="font-medium mb-2">Share & Earn</h3>
                   <p className="text-muted-foreground">
-                    Share relevant data and earn real rewards -
-                    cash, discounts, points, and exclusive
+                    Share relevant data and earn real rewards - cash, discounts, points, and exclusive
                     offers.
                   </p>
                 </div>
@@ -363,12 +316,9 @@ export function LandingPage({
                   4
                 </div>
                 <div>
-                  <h3 className="font-medium mb-2">
-                    Track & Withdraw
-                  </h3>
+                  <h3 className="font-medium mb-2">Track & Withdraw</h3>
                   <p className="text-muted-foreground">
-                    Monitor your earnings and privacy settings
-                    in your dashboard. Withdraw rewards anytime.
+                    Monitor your earnings and privacy settings in your dashboard. Withdraw rewards anytime.
                   </p>
                 </div>
               </div>
@@ -393,26 +343,18 @@ export function LandingPage({
                 Take Control of Your Digital Footprint
               </h2>
               <p className="text-xl text-muted-foreground mb-8">
-                Every day, your data creates value for tourism
-                companies. Now it's time for you to benefit from
-                that value too.
+                Every day, your data creates value for tourism companies. Now it's time for you to benefit
+                from that value too.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {benefits.map((benefit, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center space-x-3"
-                  >
+                  <div key={index} className="flex items-center space-x-3">
                     <CheckCircle className="w-5 h-5 text-green-500" />
                     <span className="text-sm">{benefit}</span>
                   </div>
                 ))}
               </div>
-              <Button
-                size="lg"
-                className="mt-8"
-                onClick={onGetStarted}
-              >
+              <Button size="lg" className="mt-8" onClick={onGetStarted}>
                 Start Your Journey
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
@@ -432,41 +374,24 @@ export function LandingPage({
       <section id="testimonials" className="py-20">
         <div className="container mx-auto px-6">
           <div className="max-w-3xl mx-auto text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-medium mb-6">
-              What Our Users Say
-            </h2>
+            <h2 className="text-3xl md:text-4xl font-medium mb-6">What Our Users Say</h2>
             <p className="text-xl text-muted-foreground">
-              Join thousands of New Zealanders who are already
-              earning from their travel data.
+              Join thousands of New Zealanders who are already earning from their travel data.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {testimonials.map((testimonial, index) => (
-              <Card
-                key={index}
-                className="hover:shadow-lg transition-shadow"
-              >
+              <Card key={index} className="hover:shadow-lg transition-shadow">
                 <CardContent className="p-6">
                   <div className="flex items-center mb-4">
-                    {[...Array(testimonial.rating)].map(
-                      (_, i) => (
-                        <Star
-                          key={i}
-                          className="w-4 h-4 text-yellow-400 fill-current"
-                        />
-                      ),
-                    )}
+                    {[...Array(testimonial.rating)].map((_, i) => (
+                      <Star key={i} className="w-4 h-4 text-yellow-400 fill-current" />
+                    ))}
                   </div>
-                  <p className="text-muted-foreground mb-4">
-                    "{testimonial.content}"
-                  </p>
+                  <p className="text-muted-foreground mb-4">"{testimonial.content}"</p>
                   <div>
-                    <div className="font-medium">
-                      {testimonial.name}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {testimonial.role}
-                    </div>
+                    <div className="font-medium">{testimonial.name}</div>
+                    <div className="text-sm text-muted-foreground">{testimonial.role}</div>
                   </div>
                 </CardContent>
               </Card>
@@ -478,13 +403,10 @@ export function LandingPage({
       {/* CTA Section */}
       <section className="py-20 bg-primary text-primary-foreground">
         <div className="container mx-auto px-6 text-center">
-          <h2 className="text-3xl md:text-4xl font-medium mb-6">
-            Ready to Take Control of Your Data?
-          </h2>
+          <h2 className="text-3xl md:text-4xl font-medium mb-6">Ready to Take Control of Your Data?</h2>
           <p className="text-xl opacity-90 mb-8 max-w-2xl mx-auto">
-            Join TravelSense today and start earning from your
-            travel data. It's free to join and you can start
-            earning immediately.
+            Join TravelSense today and start earning from your travel data. It's free to join and you can
+            start earning immediately.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button
@@ -512,42 +434,30 @@ export function LandingPage({
                 <span className="font-medium">TravelSense</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Empowering tourists to control their data and
-                earn rewards in New Zealand's tourism industry.
+                Empowering tourists to control their data and earn rewards in New Zealand's tourism
+                industry.
               </p>
             </div>
             <div>
               <h4 className="font-medium mb-4">Product</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <a
-                    href="#"
-                    className="hover:text-foreground transition-colors"
-                  >
+                  <a href="#" className="hover:text-foreground transition-colors">
                     Features
                   </a>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="hover:text-foreground transition-colors"
-                  >
+                  <a href="#" className="hover:text-foreground transition-colors">
                     How It Works
                   </a>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="hover:text-foreground transition-colors"
-                  >
+                  <a href="#" className="hover:text-foreground transition-colors">
                     Pricing
                   </a>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="hover:text-foreground transition-colors"
-                  >
+                  <a href="#" className="hover:text-foreground transition-colors">
                     Dashboard
                   </a>
                 </li>
@@ -557,32 +467,29 @@ export function LandingPage({
               <h4 className="font-medium mb-4">Support</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <a
-                    href="#"
-                    className="hover:text-foreground transition-colors"
-                  >
+                  <a href="#" className="hover:text-foreground transition-colors">
                     Help Center
                   </a>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="hover:text-foreground transition-colors"
-                  >
+                  <a href="#" className="hover:text-foreground transition-colors">
                     Privacy Policy
                   </a>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="hover:text-foreground transition-colors"
-                  >
+                  <a href="#" className="hover:text-foreground transition-colors">
                     Terms of Service
                   </a>
                 </li>
                 <li>
                   <a
-                    href="#"
+                    href="#/contact"
+                    onClick={(e) => {
+                      if (onNavigateToContact) {
+                        e.preventDefault();
+                        onNavigateToContact();
+                      }
+                    }}
                     className="hover:text-foreground transition-colors"
                   >
                     Contact Us
@@ -594,18 +501,12 @@ export function LandingPage({
               <h4 className="font-medium mb-4">Company</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <a
-                    href="#"
-                    className="hover:text-foreground transition-colors"
-                  >
+                  <a href="#" className="hover:text-foreground transition-colors">
                     About Us
                   </a>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="hover:text-foreground transition-colors"
-                  >
+                  <a href="#" className="hover:text-foreground transition-colors">
                     Partners
                   </a>
                 </li>
@@ -618,18 +519,12 @@ export function LandingPage({
                   </button>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="hover:text-foreground transition-colors"
-                  >
+                  <a href="#" className="hover:text-foreground transition-colors">
                     Careers
                   </a>
                 </li>
                 <li>
-                  <a
-                    href="#"
-                    className="hover:text-foreground transition-colors"
-                  >
+                  <a href="#" className="hover:text-foreground transition-colors">
                     News
                   </a>
                 </li>
@@ -637,8 +532,7 @@ export function LandingPage({
             </div>
           </div>
           <div className="mt-8 pt-8 border-t border-border text-center text-sm text-muted-foreground">
-            © 2025 TravelSense. All rights reserved. Made with
-            ❤️ in New Zealand.
+            © 2025 TravelSense. All rights reserved. Made with ❤️ in New Zealand.
           </div>
         </div>
       </footer>

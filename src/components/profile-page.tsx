@@ -14,7 +14,8 @@ import {
   Activity,
   CheckCircle,
   EyeOff,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from "lucide-react";
 import {
   Card,
@@ -151,7 +152,30 @@ const [visibleLogs, setVisibleLogs] = useState(5);
 const [phoneNumber, setPhoneNumber] = useState("+64"); // ✅ Default NZ prefix
 const [isVerifyingMfa, setIsVerifyingMfa] = useState(false);
 const [showPhoneInput, setShowPhoneInput] = useState(false);
+const [verificationCode, setVerificationCode] = useState("");
+const [verificationId, setVerificationId] = useState<string | null>(null);
+const [isCodeSent, setIsCodeSent] = useState(false);
+const [tempToggle, setTempToggle] = useState(false);
+const [showMfaWarning, setShowMfaWarning] = useState(false);
+const [loading, setLoading] = useState(false);
+const [resendCooldown, setResendCooldown] = useState(false);
+const [cooldownTime, setCooldownTime] = useState(0);
 
+useEffect(() => {
+  if (!resendCooldown) return;
+  const interval = setInterval(() => {
+    setCooldownTime((prev) => {
+      if (prev <= 1) {
+        clearInterval(interval);
+        setResendCooldown(false);
+        return 0;
+      }
+      return prev - 1;
+    });
+  }, 1000);
+
+  return () => clearInterval(interval);
+}, [resendCooldown]);
 
 const checkMfaStatus = () => {
   const user = auth.currentUser;
@@ -159,36 +183,53 @@ const checkMfaStatus = () => {
   return multiFactor(user).enrolledFactors.length > 0;
 };
 
+// ✅ Initialize reCAPTCHA once when the component mounts
 useEffect(() => {
-  if (auth && !window.recaptchaVerifier) {
-    try {
-      console.log("Auth object before Recaptcha init:", auth);
-
-      // ✅ Type-safe workaround for Firebase Auth v12+
-      const verifier = new (RecaptchaVerifier as any)(
-        "recaptcha-container", // HTML element ID (must exist in JSX)
-        {
-          size: "invisible",
-          callback: (response: any) => {
-            console.log("✅ reCAPTCHA solved:", response);
-          },
-          "expired-callback": () => {
-            console.warn("⚠️ reCAPTCHA expired, please retry.");
-          },
-        },
-        auth // ✅ Auth instance as third argument
-      );
-
-      // Store globally for reuse
-      window.recaptchaVerifier = verifier;
-
-      console.log("✅ reCAPTCHA initialized successfully");
-    } catch (err) {
-      console.error("❌ reCAPTCHA init error:", err);
-    }
+  // Prevent duplicate initialization
+  if (window.recaptchaVerifier) {
+    console.log("⚠️ reCAPTCHA already initialized.");
+    return;
   }
-}, []);
 
+  try {
+    // Ensure container exists
+    const container = document.getElementById("recaptcha-container");
+    if (!container) {
+      console.warn("⏳ reCAPTCHA container not yet in DOM, retrying...");
+      setTimeout(() => {
+        // try again once DOM is ready
+        if (!window.recaptchaVerifier) {
+          window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+            size: "invisible",
+          });
+          window.recaptchaVerifier.render();
+          console.log("✅ reCAPTCHA initialized after DOM ready");
+        }
+      }, 500);
+      return;
+    }
+
+    // Create the verifier
+    window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+      size: "invisible",
+    });
+    window.recaptchaVerifier.render();
+    console.log("✅ reCAPTCHA initialized successfully in ProfilePage");
+  } catch (err) {
+    console.error("❌ reCAPTCHA init error:", err);
+  }
+
+  // Cleanup on unmount
+  return () => {
+    if (window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier.clear();
+        delete window.recaptchaVerifier;
+        console.log("🧹 reCAPTCHA cleaned up");
+      } catch {}
+    }
+  };
+}, []);
 
 useEffect(() => {
   setMfaEnabled(checkMfaStatus());
@@ -335,32 +376,42 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 const handleToggleMfa = async (enabled: boolean) => {
   const user = auth.currentUser;
 
-  if (!isEmailProvider) {
-    toast.info("MFA is available only for email/password accounts.");
-    return;
-  }
-
+  // 1️⃣ Check user context
   if (!user) {
     toast.error("No authenticated user found.");
     return;
   }
 
-  if (!enabled) {
-    // Disable MFA
-    try {
-      const enrolledFactors = multiFactor(user).enrolledFactors;
-      for (const factor of enrolledFactors) {
-        await multiFactor(user).unenroll(factor.uid);
-      }
-      toast.success("MFA disabled successfully.");
-      setMfaEnabled(false);
-    } catch (error: any) {
-      console.error(error);
-      toast.error("Failed to disable MFA.");
-    }
+  // 2️⃣ Block non-email/password users
+  if (!isEmailProvider) {
+    toast.info("MFA is only available for email/password accounts.");
     return;
   }
 
+  // 3️⃣ DISABLE MFA (unenroll factors)
+  if (!enabled) {
+    try {
+      const enrolledFactors = multiFactor(user).enrolledFactors;
+
+      if (enrolledFactors.length === 0) {
+        toast.info("MFA is already disabled.");
+        setMfaEnabled(false);
+        return;
+      }
+
+      // 🟢 Usually only one phone factor, but loop safely
+      for (const factor of enrolledFactors) {
+        await multiFactor(user).unenroll(factor.uid);
+      }
+
+      toast.success("✅ Multi-Factor Authentication disabled successfully.");
+      setMfaEnabled(false);
+    } catch (error: any) {
+      console.error("❌ MFA disable error:", error);
+      toast.error(error.message || "Failed to disable MFA.");
+    }
+    return;
+  }
   // Enable MFA
   try {
     const phoneProvider = new PhoneAuthProvider(auth);
@@ -388,19 +439,63 @@ const handleToggleMfa = async (enabled: boolean) => {
 };
 
 // ✅ Handles deleting all shared data (used by "Delete Data" dialog)
-const handleDeleteAllData = () => {
-  if (onDeleteAllData) {
-    onDeleteAllData();
-   // ✅ Clear local storage and reset states (local only)
+const handleDeleteAllData = async () => {
+  const user = auth.currentUser;
+  if (!user) {
+    toast.error("You must be signed in to delete data.");
+    return;
+  }
+
+  const db = getFirestore();
+  const storage = getStorage();
+
+  try {
+    toast.info("Deleting your uploaded data...");
+
+    // 🔹 1. Delete uploaded datasets (Firestore + Storage)
+    const datasetsRef = import("firebase/firestore").then(({ collection, getDocs, deleteDoc }) => ({
+      collection,
+      getDocs,
+      deleteDoc,
+    }));
+
+    const { collection, getDocs, deleteDoc } = await datasetsRef;
+    const snapshot = await getDocs(collection(db, "users", user.uid, "datasets"));
+
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data();
+
+      // delete from Storage if file path exists
+      if (data.storagePath) {
+        try {
+          const fileRef = ref(storage, data.storagePath);
+          await import("firebase/storage").then(({ deleteObject }) => deleteObject(fileRef));
+        } catch (err) {
+          console.warn("Failed to delete file:", err);
+        }
+      }
+
+      await deleteDoc(docSnap.ref);
+    }
+
+    // 🔹 2. Delete profile image from storage if uploaded
+    const profileRef = ref(storage, `profileImages/${user.uid}`);
+    try {
+      await import("firebase/storage").then(({ deleteObject }) => deleteObject(profileRef));
+    } catch {
+      console.log("No profile image found to delete.");
+    }
+
+    // 🔹 3. Clear any local cached data
     localStorage.clear();
 
-    // ✅ Success feedback
-    toast.success("All account data deleted successfully.", {
-      description: "All shared data has been permanently deleted from partner systems.",
-    });
+    toast.success("✅ All your uploaded data and files have been deleted.");
+  } catch (error) {
+    console.error("❌ Error deleting data:", error);
+    toast.error("Failed to delete all data. Please try again later.");
   }
 };
- 
+
  const handleDeleteAccount = async () => {
   if (!auth.currentUser) return;
 
@@ -428,6 +523,33 @@ const handleDeleteAllData = () => {
   }
 };
 
+const handleDisableMfa = async () => {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      toast.error("No signed-in user.");
+      return;
+    }
+
+    const enrolledFactors = multiFactor(user).enrolledFactors;
+
+    if (enrolledFactors.length === 0) {
+      toast.info("No MFA factors to remove.");
+      return;
+    }
+
+    // Usually, there's only one enrolled phone factor
+    const factorUid = enrolledFactors[0].uid;
+
+    await multiFactor(user).unenroll(factorUid);
+
+    toast.success("Multi-Factor Authentication disabled successfully!");
+    setMfaEnabled(false); // 🔄 Reflect in UI
+  } catch (err: any) {
+    console.error("❌ Error disabling MFA:", err);
+    toast.error(err.message || "Failed to disable MFA.");
+  }
+};
 
 const handleChangePassword = async () => {
   const user = auth.currentUser;
@@ -857,111 +979,279 @@ const getInitials = (name: string) =>
   <CardContent className="p-6 space-y-4">
     {/* Header Row */}
     <div className="flex items-center justify-between">
-      <div className="flex items-center space-x-4">
-        <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-          <Lock className="w-5 h-5 text-blue-600" />
-        </div>
-        <div>
-          <h4>Multi-Factor Authentication</h4>
-          <p className="text-sm text-muted-foreground">
-            Add an extra layer of security to your account with SMS MFA
-          </p>
-        </div>
-      </div>
-      <div className="flex items-center space-x-3">
-        <Label htmlFor="mfa-toggle" className="text-sm">
-          {mfaEnabled ? "Enabled" : "Disabled"}
-        </Label>
-        <Switch
-          id="mfa-toggle"
-          checked={mfaEnabled}
-          onCheckedChange={(checked) => {
-            if (checked) {
-              // User is turning MFA on → show input
-              setShowPhoneInput(true);
-            } else {
-              // User turning MFA off → disable MFA directly
-              handleToggleMfa(false);
-            }
+  <div className="flex items-center space-x-4">
+    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+      <Lock className="w-5 h-5 text-blue-600" />
+    </div>
+    <div>
+      <h4>Multi-Factor Authentication</h4>
+      <p className="text-sm text-muted-foreground">
+        Add an extra layer of security to your account with SMS MFA
+      </p>
+    </div>
+  </div>
+
+  <div className="flex items-center space-x-3">
+  <Label htmlFor="mfa-toggle" className="text-sm">
+    {mfaEnabled ? "Enabled" : "Disabled"}
+  </Label>
+
+  <Switch
+    id="mfa-toggle"
+    checked={mfaEnabled || showPhoneInput || tempToggle}
+    onCheckedChange={(checked) => {
+      // 🚫 Non-email providers
+      if (!isEmailProvider && checked) {
+        setTempToggle(true); // briefly ON
+        setShowMfaWarning(true);
+        toast.info(
+          "MFA is only available for email/password accounts."
+        );
+        setTimeout(() => {
+          setTempToggle(false);
+          setShowMfaWarning(false);
+        }, 3000);
+        return;
+      }
+
+      if (checked) {
+        setShowPhoneInput(true);
+        setShowMfaWarning(false);
+      } else {
+        handleToggleMfa(false);
+        setShowPhoneInput(false);
+        setShowMfaWarning(false);
+      }
+    }}
+  />
+</div>
+</div>
+
+{/* Inline warning */}
+{showMfaWarning && (
+  <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3 mt-3">
+    ⚠️ Your account is connected through{" "}
+    <strong>
+      {auth.currentUser?.providerData
+        ?.map((p) => p.providerId.replace(".com", "").toUpperCase())
+        .join(", ")}
+    </strong>.
+    <br />
+    SMS-based multi-factor authentication is only supported for
+    <strong> email/password sign-ins.</strong>
+  </div>
+)}
+
+{/* ✅ Inline phone number input - only visible when MFA being enabled */}
+{showPhoneInput && isEmailProvider && !mfaEnabled && (
+  <div className="flex flex-col space-y-3 mt-3 animate-fadeIn">
+    <Label htmlFor="phone">Phone Number</Label>
+
+    <PhoneInput
+      country="nz"
+      value={phoneNumber}
+      onChange={(val) => setPhoneNumber("+" + val)}
+      inputStyle={{
+        width: "100%",
+        borderRadius: "8px",
+        border: "1px solid #ccc",
+        height: "40px",
+        fontSize: "14px",
+      }}
+      containerStyle={{ width: "100%" }}
+    />
+
+    {!isCodeSent && (
+      <div className="flex justify-end space-x-2 mt-2">
+        <Button
+  type="button"
+  disabled={loading}
+  className={`bg-blue-600 text-white hover:bg-blue-700 flex items-center justify-center ${
+    loading ? "opacity-80 cursor-not-allowed" : ""
+  }`}
+  onClick={async () => {
+    try {
+      setLoading(true); // 🟢 Start spinner
+
+      const recaptchaVerifier = window.recaptchaVerifier;
+      if (!recaptchaVerifier) {
+        toast.error("reCAPTCHA not ready. Please reload the page.");
+        setLoading(false);
+        return;
+      }
+
+      if (!phoneNumber || phoneNumber.trim().length < 8) {
+        toast.error("Please enter a valid phone number.");
+        setLoading(false);
+        return;
+      }
+
+      console.log("📱 Sending SMS to:", phoneNumber);
+      const phoneProvider = new PhoneAuthProvider(auth);
+      const id = await phoneProvider.verifyPhoneNumber(
+        phoneNumber,
+        recaptchaVerifier
+      );
+
+      setVerificationId(id);
+      setIsCodeSent(true);
+      toast.success("Verification code sent! Check your SMS.");
+    } catch (err: any) {
+      console.error("❌ SMS send error:", err);
+      toast.error(err.message || "Failed to send SMS.");
+      setShowPhoneInput(false);
+    } finally {
+      setLoading(false); // 🔵 Stop spinner
+    }
+  }}
+>
+  {loading ? (
+    <>
+      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+      Sending...
+    </>
+  ) : (
+    "Send Code"
+  )}
+</Button>
+
+        <Button
+          variant="outline"
+          onClick={() => {
+            setShowPhoneInput(false);
+            setMfaEnabled(false);
           }}
-        />
+        >
+          Cancel
+        </Button>
       </div>
+    )}
+
+    {isCodeSent && (
+  <div className="flex flex-col space-y-3">
+    <Label htmlFor="verificationCode">Enter 6-digit Code</Label>
+
+    <div className="flex space-x-2">
+      <Input
+        id="verificationCode"
+        placeholder="123456"
+        value={verificationCode}
+        onChange={(e) => setVerificationCode(e.target.value)}
+        className="text-center tracking-widest font-mono"
+        maxLength={6}
+      />
+
+      <Button
+        type="button"
+        disabled={loading}
+        className={`bg-green-600 text-white hover:bg-green-700 flex items-center justify-center ${
+          loading ? "opacity-80 cursor-not-allowed" : ""
+        }`}
+        onClick={async () => {
+          try {
+            setLoading(true);
+            if (!verificationId) {
+              toast.error("Missing verification ID. Try sending the code again.");
+              setLoading(false);
+              return;
+            }
+
+            if (verificationCode.trim().length !== 6) {
+              toast.error("Please enter a valid 6-digit code.");
+              setLoading(false);
+              return;
+            }
+
+            const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
+            const assertion = PhoneMultiFactorGenerator.assertion(credential);
+
+            console.log("🔐 Enrolling phone MFA...");
+            await multiFactor(auth.currentUser!).enroll(assertion, "Primary phone");
+
+            toast.success("✅ MFA enabled successfully!");
+            setMfaEnabled(true);
+            setShowPhoneInput(false);
+            setIsCodeSent(false);
+            setVerificationCode("");
+          } catch (err: any) {
+            console.error("❌ Code verification error:", err);
+            toast.error(err.message || "Invalid or expired code.");
+          } finally {
+            setLoading(false);
+          }
+        }}
+      >
+        {loading ? (
+          <>
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            Verifying...
+          </>
+        ) : (
+          "Verify Code"
+        )}
+      </Button>
     </div>
 
-    {/* ✅ Inline phone number input - show only when user enabling MFA */}
-    {showPhoneInput && !mfaEnabled && (
-      <div className="flex flex-col space-y-2 mt-3 animate-fadeIn">
-        <Label htmlFor="phone">Phone Number</Label>
-        <PhoneInput
-          country={"nz"} // Default country
-          value={phoneNumber}
-          onChange={(val) => setPhoneNumber("+" + val)}
-          inputStyle={{
-            width: "100%",
-            borderRadius: "8px",
-            border: "1px solid #ccc",
-            height: "40px",
-            fontSize: "14px",
-          }}
-          containerStyle={{ width: "100%" }}
-        />
-        {/* ✅ Align buttons horizontally */}
-  <div className="flex justify-end gap-3 mt-4">
-    <Button
-      className="bg-blue-600 text-white hover:bg-blue-700"
-      onClick={async () => {
-        try {
-          const recaptchaVerifier = window.recaptchaVerifier;
-          if (!recaptchaVerifier) {
-            toast.error("reCAPTCHA not ready. Please reload the page and try again.");
-            return;
-          }
-
-          if (!phoneNumber || phoneNumber.trim().length < 8) {
-            toast.error("Please enter a valid phone number.");
-            return;
-          }
-
-          const phoneProvider = new PhoneAuthProvider(auth);
-          const verificationId = await phoneProvider.verifyPhoneNumber(phoneNumber, recaptchaVerifier);
-          const code = prompt("Enter the 6-digit verification code:");
-          if (!code) return;
-
-          const credential = PhoneAuthProvider.credential(verificationId, code);
-          const assertion = PhoneMultiFactorGenerator.assertion(credential);
-
-          await multiFactor(auth.currentUser!).enroll(assertion, "Primary phone");
-          toast.success("MFA enabled successfully!");
-          setMfaEnabled(true);
-          setShowPhoneInput(false);
-        } catch (err: any) {
-          console.error("MFA enable error:", err);
-          toast.error(err.message || "Failed to enable MFA.");
+    {/* 🔁 Resend Code Option */}
+    <div className="text-center space-y-1 mt-2">
+  <Button
+    variant="ghost"
+    size="sm"
+    disabled={resendCooldown}
+    onClick={async () => {
+      try {
+        const recaptchaVerifier = window.recaptchaVerifier;
+        if (!recaptchaVerifier) {
+          toast.error("reCAPTCHA not ready. Please reload the page.");
+          return;
         }
-      }}
-    >
-      Confirm & Enable MFA
-    </Button>
 
-    <Button variant="outline" onClick={() => setShowPhoneInput(false)}>
-      Cancel
-    </Button>
-  </div>
+        setResendCooldown(true);   // ✅ start cooldown
+        setCooldownTime(10);       // ✅ 10-second countdown
+
+        const phoneProvider = new PhoneAuthProvider(auth);
+        const newId = await phoneProvider.verifyPhoneNumber(
+          phoneNumber,
+          recaptchaVerifier
+        );
+        setVerificationId(newId);
+        toast.success("New verification code sent!");
+      } catch (err: any) {
+        console.error("❌ Resend code error:", err);
+        toast.error(err.message || "Failed to resend code.");
+        setResendCooldown(false);
+      }
+    }}
+    className={`text-blue-600 hover:text-blue-800 ${
+      resendCooldown ? "opacity-50 cursor-not-allowed" : ""
+    }`}
+  >
+    {resendCooldown ? "Resend Disabled" : "Resend Code"}
+  </Button>
+
+  {/* ⏱️ Countdown text */}
+  {resendCooldown && (
+    <p className="text-xs text-gray-500 mt-1">
+      You can resend in <span className="font-semibold">{cooldownTime}</span>s
+    </p>
+  )}
 </div>
-    )}
+</div>
+)}
+</div>
+)}
 
-    {/* ✅ reCAPTCHA container */}
-    <div id="recaptcha-container"></div>
+{/* ✅ reCAPTCHA container */}
+<div id="recaptcha-container"></div>
 
-    {/* ✅ Status message after enabled */}
-    {mfaEnabled && (
-      <div className="mt-4 text-xs text-green-700 bg-green-50 rounded-md p-2">
-        ✓ Your account is protected with SMS-based two-factor authentication
-      </div>
-    )}
+{/* ✅ Status message after enabled */}
+{mfaEnabled && (
+  <div className="mt-4 text-xs text-green-700 bg-green-50 rounded-md p-2 animate-fadeIn">
+    ✓ Your account is protected with SMS-based two-factor authentication
+  </div>
+)}
   </CardContent>
 </Card>
-
 
                 {/* Change Password */}
                 <Card className="hover:shadow-md transition-shadow">
@@ -1150,7 +1440,7 @@ const getInitials = (name: string) =>
 
             {/* Activity Log */}
 <div ref={activitySectionRef} className="space-y-4">
-  <h3>Recent Activity</h3>
+  <h3>Audit Log</h3>
   <Card>
     <CardContent className="p-0">
       {activityLog.length === 0 ? (
@@ -1165,7 +1455,7 @@ const getInitials = (name: string) =>
             {activityLog.slice(0, visibleLogs).map((entry, index) => (
               <div
                 key={entry.id}
-                className="p-4 hover:bg-muted/30 transition-colors animate-fadeIn"
+                className="p-6 hover:bg-muted/30 transition-colors animate-fadeIn"
                 style={{ animationDelay: `${index * 50}ms` }}
               >
                 <div className="flex items-start justify-between">
@@ -1195,12 +1485,12 @@ const getInitials = (name: string) =>
 
           {/* Load More / Show Less */}
           {activityLog.length > 5 && (
-            <div className="text-center pt-3">
+            <div className="text-center pt-3 px-6">
               {visibleLogs < activityLog.length ? (
                 <Button
                   variant="outline"
                   onClick={() => setVisibleLogs((prev) => prev + 5)}
-                  className="transition-all duration-200 hover:shadow-sm"
+                  className="w-full transition-all duration-200 hover:shadow-sm"
                 >
                   Load More
                 </Button>
@@ -1211,7 +1501,7 @@ const getInitials = (name: string) =>
                     setVisibleLogs(5);
                     activitySectionRef.current?.scrollIntoView({ behavior: "smooth" });
                   }}
-                  className="text-muted-foreground hover:text-foreground transition-all duration-200"
+                  className="w-full text-muted-foreground hover:text-foreground transition-all duration-200"
                 >
                   Show Less
                 </Button>
@@ -1235,9 +1525,9 @@ const getInitials = (name: string) =>
                   <div className="flex items-center space-x-4">
                     <Eye className="w-5 h-5 text-blue-600" />
                     <div>
-                      <h4>Export Your Data</h4>
+                      <h4>Export Your Audit Log</h4>
                       <p className="text-sm text-muted-foreground">
-                        Download a copy of all your data in JSON
+                        Download a copy of your audit log in JSON
                         format
                       </p>
                     </div>
@@ -1253,7 +1543,7 @@ const getInitials = (name: string) =>
                       });
                     }}
                   >
-                    Export Data
+                    Export Log
                   </Button>
                 </div>
 
@@ -1300,9 +1590,6 @@ const getInitials = (name: string) =>
                             </li>
                             <li>
                               Reset your earned rewards to zero
-                            </li>
-                            <li>
-                              Clear all active permissions
                             </li>
                           </ul>
                           <p className="mt-3">

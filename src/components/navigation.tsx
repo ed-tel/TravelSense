@@ -12,7 +12,6 @@ import {
   Plane,
   LayoutDashboard,
   Gift,
-  AlertCircle,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
@@ -41,6 +40,10 @@ interface NavigationProps {
   onNavigateToRewardsAndPartners?: () => void;
   onNavigateToProfile?: () => void;
   onNavigateToUploadData?: () => void;
+
+  // Keep this prop so App.tsx can still pass it, but we won't render a Contact link here.
+  onNavigateToContact?: () => void;
+
   onSignOut?: () => void;
   userName?: string;
   userEmail?: string;
@@ -74,6 +77,7 @@ export function Navigation({
   onNavigateToRewardsAndPartners,
   onNavigateToProfile,
   onNavigateToUploadData,
+  onNavigateToContact, // kept but unused
   onSignOut,
   userName: propName,
   userEmail: propEmail,
@@ -97,7 +101,6 @@ export function Navigation({
   onToggleAlertNotifications = () => {},
   onOpenManageConsent,
 }: NavigationProps) {
-  // ✅ Firebase user info sync
   const {
     userName: firebaseName,
     userEmail: firebaseEmail,
@@ -143,7 +146,7 @@ export function Navigation({
           </TooltipProvider>
         </div>
 
-        {/* Center Navigation */}
+        {/* Center Navigation (desktop) */}
         <nav className="hidden md:flex items-center space-x-6 absolute left-1/2 transform -translate-x-1/2">
           <button
             onClick={onNavigateToDashboard}
@@ -166,13 +169,14 @@ export function Navigation({
             }`}
           >
             <Gift className="w-4 h-4" />
-            Rewards & Partners
+            Rewards &amp; Partners
           </button>
+
+          {/* Contact button removed here so it won't show after sign-in */}
         </nav>
 
-        {/* Actions */}
+        {/* Right actions */}
         <div className="flex items-center space-x-4">
-          {/* Notifications */}
           <NotificationsPopover
             notifications={notifications}
             onMarkAsRead={onMarkNotificationAsRead}
@@ -206,27 +210,14 @@ export function Navigation({
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">{userName}</p>
-                  <p className="text-xs leading-none text-muted-foreground">
-                    {userEmail}
-                  </p>
+                  <p className="text-xs leading-none text-muted-foreground">{userEmail}</p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-  <button
-    type="button"
-    onMouseDown={(e) => {
-      // mouseDown triggers before focus-trap closes dropdown
-      e.preventDefault();
-      onNavigateToProfile?.();
-    }}
-    className="w-full text-left flex items-center px-2 py-1.5 rounded-md hover:bg-accent focus:bg-accent cursor-pointer"
-  >
-    <User className="mr-2 h-4 w-4" />
-    <span>Profile Settings</span>
-  </button>
-</DropdownMenuItem>
-
+              <DropdownMenuItem onClick={onNavigateToProfile}>
+                <User className="mr-2 h-4 w-4" />
+                <span>Profile Settings</span>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={onSignOut || (() => signOut(auth))}
