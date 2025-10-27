@@ -756,8 +756,8 @@ const getInitials = (name: string) =>
             Manage your profile and security settings
           </p>
         </div>
-
-
+        {/* ✅ reCAPTCHA container */}
+<div id="recaptcha-container"></div>
         {/* Tabs for different sections */}
         <Tabs defaultValue="profile" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -1327,9 +1327,6 @@ const getInitials = (name: string) =>
 )}
 </div>
 )}
-
-{/* ✅ reCAPTCHA container */}
-<div id="recaptcha-container"></div>
 
 {/* ✅ Status message after enabled */}
 {mfaEnabled && (
