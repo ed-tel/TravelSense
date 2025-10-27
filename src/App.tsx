@@ -959,6 +959,7 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
           onNavigateToRewardsAndPartners={handleNavigateToRewardsAndPartners}
           onNavigateToProfile={handleNavigateToProfile}
           onNavigateToUploadData={handleNavigateToUploadData}
+          onNavigateToContact={handleNavigateToContact}
           onSignOut={handleSignOut}
           userName={userName}
           userEmail={userEmail}
@@ -1004,6 +1005,7 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
           onNavigateToRewardsAndPartners={handleNavigateToRewardsAndPartners}
           onNavigateToProfile={handleNavigateToProfile}
           onNavigateToUploadData={handleNavigateToUploadData}
+          onNavigateToContact={handleNavigateToContact}
           onSignOut={handleSignOut}
           userName={userName}
           userEmail={userEmail}
@@ -1054,6 +1056,7 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
           onNavigateToRewardsAndPartners={handleNavigateToRewardsAndPartners}
           onNavigateToProfile={handleNavigateToProfile}
           onNavigateToUploadData={handleNavigateToUploadData}
+          onNavigateToContact={handleNavigateToContact}
           onSignOut={handleSignOut}
           userName={userName}
           userEmail={userEmail}
@@ -1092,6 +1095,7 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
           onNavigateToRewardsAndPartners={handleNavigateToRewardsAndPartners}
           onNavigateToProfile={handleNavigateToProfile}
           onNavigateToUploadData={handleNavigateToUploadData}
+          onNavigateToContact={handleNavigateToContact}
           onSignOut={handleSignOut}
           userName={userName}
           userEmail={userEmail}
@@ -1129,6 +1133,7 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
           onNavigateToRewardsAndPartners={handleNavigateToRewardsAndPartners}
           onNavigateToProfile={handleNavigateToProfile}
           onNavigateToUploadData={handleNavigateToUploadData}
+          onNavigateToContact={handleNavigateToContact}
           onSignOut={handleSignOut}
           userName={userName}
           userEmail={userEmail}
@@ -1166,6 +1171,7 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
         onNavigateToRewardsAndPartners={handleNavigateToRewardsAndPartners}
         onNavigateToProfile={handleNavigateToProfile}
         onNavigateToUploadData={handleNavigateToUploadData}
+        onNavigateToContact={handleNavigateToContact}
         onSignOut={handleSignOut}
         userName={userName}
         userEmail={userEmail}
