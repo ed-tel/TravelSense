@@ -586,8 +586,8 @@ const handleDeleteAuditLog = async () => {
  const handleDeleteAccount = async () => {
   if (!auth.currentUser) return;
 
-  const userName = auth.currentUser.displayName || "Unknown";
-  const userEmail = auth.currentUser.email || "unknown@example.com";
+  const userName = auth.currentUser.displayName || "User";
+  const userEmail = auth.currentUser.email || "user@example.com";
   const userId = auth.currentUser.uid;
 
 
