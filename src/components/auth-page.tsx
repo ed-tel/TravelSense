@@ -160,7 +160,6 @@ const handleSubmit = async (e: React.FormEvent) => {
       { size: "invisible" }
     );
     await window.recaptchaVerifier.render();
-    setLoading(true);
   }
 
   const phoneInfoOptions = {
@@ -372,8 +371,9 @@ const handleSubmit = async (e: React.FormEvent) => {
 
                 {/* 🔐 Inline MFA code input (only shown when needed) */}
 {showMfaCodeInput && (
-  <div className="space-y-2 animate-fadeIn">
+  <div className="space-y-3 animate-fadeIn">
     <Label htmlFor="verificationCode">Enter 6-digit verification code</Label>
+
     <div className="flex space-x-2">
       <Input
         id="verificationCode"
@@ -384,55 +384,91 @@ const handleSubmit = async (e: React.FormEvent) => {
         maxLength={6}
         className="text-center tracking-widest font-mono"
       />
+
       <Button
-  type="button"
-  className="bg-green-600 text-white hover:bg-green-700"
-  onClick={async () => {
-    setLoading(true);
-    try {
-      if (!verificationId) {
-        toast.error("Missing verification ID. Please sign in again.");
-        return;
-      }
+        type="button"
+        className="bg-green-600 text-white hover:bg-green-700"
+        onClick={async () => {
+          setLoading(true);
+          try {
+            if (!verificationId) {
+              toast.error("Missing verification ID. Please sign in again.");
+              return;
+            }
 
-      const resolver = (window as any).mfaResolver;
-      if (!resolver) {
-        toast.error("Missing MFA session. Please sign in again.");
-        return;
-      }
+            const resolver = (window as any).mfaResolver;
+            if (!resolver) {
+              toast.error("Missing MFA session. Please sign in again.");
+              return;
+            }
 
-      const cred = PhoneAuthProvider.credential(verificationId, verificationCode);
-      const assertion = PhoneMultiFactorGenerator.assertion(cred);
+            const cred = PhoneAuthProvider.credential(verificationId, verificationCode);
+            const assertion = PhoneMultiFactorGenerator.assertion(cred);
 
-      const finalUserCred = await resolver.resolveSignIn(assertion);
-      toast.success("✅ Signed in successfully with MFA!");
-      setShowMfaCodeInput(false);
-      setVerificationCode("");
-      delete (window as any).mfaResolver;
+            const finalUserCred = await resolver.resolveSignIn(assertion);
+            toast.success("✅ Signed in successfully with MFA!");
+            setShowMfaCodeInput(false);
+            setVerificationCode("");
+            delete (window as any).mfaResolver;
 
-      if (onSignIn) onSignIn();
-    } catch (err: any) {
-      console.error("❌ MFA verification error:", err);
-      toast.error(err.message || "Invalid or expired code.");
-    } finally {
-      setLoading(false);
-    }
-  }}
->
-  {loading ? (
-    <>
-      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-      Verifying...
-    </>
-  ) : (
-    "Verify"
-  )}
-</Button>
+            if (onSignIn) onSignIn();
+          } catch (err: any) {
+            console.error("❌ MFA verification error:", err);
+            toast.error(err.message || "Invalid or expired code.");
+          } finally {
+            setLoading(false);
+          }
+        }}
+      >
+        {loading ? (
+          <>
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            Verifying...
+          </>
+        ) : (
+          "Verify"
+        )}
+      </Button>
+    </div>
+
+    {/* 🔁 Resend Code option */}
+    <div className="text-center mt-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-blue-600 hover:text-blue-800"
+        onClick={async () => {
+          try {
+            const resolver = (window as any).mfaResolver;
+            if (!resolver) {
+              toast.error("Session expired. Please sign in again.");
+              return;
+            }
+
+            const phoneInfoOptions = {
+              multiFactorHint: resolver.hints[0],
+              session: resolver.session,
+            };
+
+            const phoneAuthProvider = new PhoneAuthProvider(auth);
+            const newVerificationId = await phoneAuthProvider.verifyPhoneNumber(
+              phoneInfoOptions,
+              window.recaptchaVerifier
+            );
+
+            setVerificationId(newVerificationId);
+            toast.success("New verification code sent.");
+          } catch (err: any) {
+            console.error("Resend MFA code error:", err);
+            toast.error("Failed to resend code. Please try again.");
+          }
+        }}
+      >
+        Resend Code
+      </Button>
     </div>
   </div>
 )}
-
-
                 {/* Confirm Password (Sign Up only) */}
                 {isSignUp && (
                   <div className="space-y-2">
