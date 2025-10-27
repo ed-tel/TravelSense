@@ -922,54 +922,44 @@ const getInitials = (name: string) =>
   </div>
 
   <div className="flex items-center space-x-3">
-    <Label htmlFor="mfa-toggle" className="text-sm">
-      {mfaEnabled ? "Enabled" : "Disabled"}
-    </Label>
+  <Label htmlFor="mfa-toggle" className="text-sm">
+    {mfaEnabled ? "Enabled" : "Disabled"}
+  </Label>
 
-    <Switch
-  key={mfaEnabled ? "on" : "off"}
-  id="mfa-toggle"
-  checked={mfaEnabled || showPhoneInput || tempToggle}
-  disabled={loading || !isEmailProvider} // 🟢 added “loading”
-      onCheckedChange={(checked) => {
-        // 👇 If not email provider and trying to enable MFA
-        if (!isEmailProvider && checked) {
-      // temporarily flip toggle ON for UX feedback
-      setTempToggle(true); // visually ON
+  <Switch
+    id="mfa-toggle"
+    checked={mfaEnabled || showPhoneInput || tempToggle}
+    onCheckedChange={(checked) => {
+      // 🚫 Non-email providers
+      if (!isEmailProvider && checked) {
+        setTempToggle(true); // briefly ON
+        setShowMfaWarning(true);
+        toast.info(
+          "MFA is only available for email/password accounts."
+        );
+        setTimeout(() => {
+          setTempToggle(false);
+          setShowMfaWarning(false);
+        }, 3000);
+        return;
+      }
 
-      // show inline warning box
-      setShowMfaWarning(true);
-      toast.info(
-        "MFA is only available for email/password accounts."
-      );
-
-      // after short delay → hide warning and toggle OFF again
-      setTimeout(() => {
+      if (checked) {
+        setShowPhoneInput(true);
         setShowMfaWarning(false);
-        setTempToggle(false);
-      }, 4000); // 4 s delay before reverting
-
-      return;
-    }
-
-        if (checked) {
-          setShowPhoneInput(true);
-          setShowMfaWarning(false);
-          setTempToggle(false);
-        } else {
-          handleToggleMfa(false);
-          setShowPhoneInput(false);
-          setShowMfaWarning(false);
-          setTempToggle(false);
-        }
-      }}
-    />
-  </div>
+      } else {
+        handleToggleMfa(false);
+        setShowPhoneInput(false);
+        setShowMfaWarning(false);
+      }
+    }}
+  />
+</div>
 </div>
 
-{/* ⚠️ Inline warning now only appears when toggled ON for non-email users */}
+{/* Inline warning */}
 {showMfaWarning && (
-  <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3 mt-3 animate-fadeIn">
+  <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3 mt-3">
     ⚠️ Your account is connected through{" "}
     <strong>
       {auth.currentUser?.providerData
@@ -977,8 +967,8 @@ const getInitials = (name: string) =>
         .join(", ")}
     </strong>.
     <br />
-    SMS-based multi-factor authentication is only supported for{" "}
-    <strong>email/password sign-ins.</strong>
+    SMS-based multi-factor authentication is only supported for
+    <strong> email/password sign-ins.</strong>
   </div>
 )}
 
