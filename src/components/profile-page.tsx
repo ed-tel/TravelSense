@@ -73,6 +73,7 @@ import { auth } from "../firebaseConfig";
 import { RecaptchaVerifier } from "firebase/auth";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
+import { collection, getDocs, deleteDoc } from "firebase/firestore";
 
 declare global {
   interface Window {
@@ -477,6 +478,92 @@ const handleDeleteAllData = async () => {
 
       await deleteDoc(docSnap.ref);
     }
+
+
+    // ✅ EXPORT AUDIT LOG
+const handleExportAuditLog = async () => {
+  const user = auth.currentUser;
+  if (!user) {
+    toast.error("You must be signed in to export your audit log.");
+    return;
+  }
+
+  const db = getFirestore();
+  try {
+    const logsRef = collection(db, "users", user.uid, "activityLogs");
+    const snapshot = await getDocs(logsRef);
+
+    if (snapshot.empty) {
+      toast.info("No audit log entries to export.");
+      return;
+    }
+
+    const logs = snapshot.docs.map((doc) => doc.data());
+    const csvHeader = "Action,Partner,Data Type,Status,Timestamp\n";
+    const csvRows = logs
+      .map((log: any) => {
+        const ts = log.timestamp?.seconds
+          ? new Date(log.timestamp.seconds * 1000).toLocaleString()
+          : "—";
+        return [
+          log.action || "",
+          log.partner || "",
+          log.dataType || "",
+          log.status || "",
+          ts,
+        ]
+          .map((v) => `"${String(v).replace(/"/g, '""')}"`) // escape quotes
+          .join(",");
+      })
+      .join("\n");
+
+    const csvContent = csvHeader + csvRows;
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `audit_log_${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success("✅ Audit log exported successfully!");
+  } catch (error) {
+    console.error("❌ Error exporting audit log:", error);
+    toast.error("Failed to export audit log. Try again later.");
+  }
+};
+
+// 🗑️ DELETE AUDIT LOG
+const handleDeleteAuditLog = async () => {
+  const user = auth.currentUser;
+  if (!user) {
+    toast.error("You must be signed in to delete your audit log.");
+    return;
+  }
+
+  const db = getFirestore();
+  try {
+    const logsRef = collection(db, "users", user.uid, "activityLogs");
+    const snapshot = await getDocs(logsRef);
+
+    if (snapshot.empty) {
+      toast.info("No audit log entries found.");
+      return;
+    }
+
+    const deletions = snapshot.docs.map((doc) => deleteDoc(doc.ref));
+    await Promise.all(deletions);
+
+    toast.success("🗑️ All audit logs deleted successfully!");
+  } catch (error) {
+    console.error("❌ Error deleting audit logs:", error);
+    toast.error("Failed to delete audit logs. Please try again.");
+  }
+};
+
 
     // 🔹 2. Delete profile image from storage if uploaded
     const profileRef = ref(storage, `profileImages/${user.uid}`);
@@ -1527,7 +1614,7 @@ const getInitials = (name: string) =>
                     <div>
                       <h4>Export Your Audit Log</h4>
                       <p className="text-sm text-muted-foreground">
-                        Download a copy of your audit log in JSON
+                        Download a copy of your audit log in CSV
                         format
                       </p>
                     </div>
