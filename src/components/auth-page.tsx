@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEffect } from "react"; // ✅ add this at the top with other imports
 
 import { Database, Mail, Lock, Eye, EyeOff, Shield, Plane, Loader2, Send } from "lucide-react";
 import { Button } from "./ui/button";
@@ -72,6 +73,28 @@ export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
     }
   };
 
+useEffect(() => {
+  // ✅ Initialize the reCAPTCHA only once
+  if (!window.recaptchaVerifier) {
+    try {
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+        size: "invisible",
+      });
+      window.recaptchaVerifier.render();
+      console.log("✅ reCAPTCHA initialized once");
+    } catch (err) {
+      console.warn("⚠️ reCAPTCHA already initialized or failed:", err);
+    }
+  }
+
+  // ✅ Cleanup to prevent stale verifier on unmount
+  return () => {
+    if (window.recaptchaVerifier) {
+      window.recaptchaVerifier.clear();
+      delete window.recaptchaVerifier;
+    }
+  };
+}, []);
 
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
@@ -153,14 +176,14 @@ const handleSubmit = async (e: React.FormEvent) => {
   (window as any).mfaResolver = resolver;
 
   // ✅ Initialize reCAPTCHA (new syntax)
-  if (!window.recaptchaVerifier) {
+ /* if (!window.recaptchaVerifier) {
     window.recaptchaVerifier = new RecaptchaVerifier(
       auth,
       "recaptcha-container",
       { size: "invisible" }
     );
     await window.recaptchaVerifier.render();
-  }
+  } */
 
   const phoneInfoOptions = {
     multiFactorHint: resolver.hints[0],
