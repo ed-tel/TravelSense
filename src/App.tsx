@@ -20,13 +20,12 @@ import "react-toastify/dist/ReactToastify.css";
 import type { Notification } from "./components/notifications-popover";
 import { useCurrentUser } from "../src/hooks/useCurrentUser";
 
-import { Card, CardContent } from "./components/ui/card";
-import { Shield } from "lucide-react";
 import { SecurityInformation } from "./components/security-information";
 import { ScrollToTopButton } from "./components/scroll-to-top-button";
 
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { auth } from "./firebaseConfig";
+import { collection, addDoc, getDocs, deleteDoc, serverTimestamp } from "firebase/firestore";
 
 // Contact page
 import { ContactPage } from "./components/contact-page";
@@ -560,26 +559,49 @@ export default function App() {
     setCurrentState("landing");
   };
 
-  // Activity log util
-  const addActivityLog = (
-    entry: Omit<ActivityLogEntry, "id" | "timestamp" | "formattedTimestamp">
-  ) => {
-    const now = Date.now();
-    const newEntry: ActivityLogEntry = {
-      ...entry,
-      id: `activity-${now}-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: now,
-      formattedTimestamp: new Date(now).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }),
-    };
-    setActivityLog((prev) => [newEntry, ...prev].slice(0, 50));
+
+// 1) Create a reusable input type
+type ActivityLogInput = Omit<ActivityLogEntry, "id" | "timestamp" | "formattedTimestamp">;
+
+// 2) Use it in both places
+const addActivityLog = async (entry: ActivityLogInput) => {
+  const now = Date.now();
+  const newEntry: ActivityLogEntry = {
+    ...entry,
+    id: `activity-${now}-${Math.random().toString(36).substr(2, 9)}`,
+    timestamp: now,
+    formattedTimestamp: new Date(now).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }),
   };
+
+  setActivityLog((prev) => [newEntry, ...prev].slice(0, 50));
+
+  if (auth.currentUser) {
+    await saveLogToFirestore(auth.currentUser.uid, entry); // entry has no timestamp
+  }
+};
+
+const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
+  try {
+    const logsRef = collection(db, "users", userId, "activityLogs");
+    await addDoc(logsRef, {
+      action: entry.action,
+      partner: entry.partner,
+      dataType: entry.dataType,
+      status: entry.status,
+      // Store server time in Firestore:
+      timestamp: serverTimestamp(),
+    });
+  } catch (err) {
+    console.error("Error saving activity log:", err);
+  }
+};
 
   // Notification handlers
   const handleMarkNotificationAsRead = (id: string) => {
@@ -744,28 +766,41 @@ export default function App() {
     }
   };
 
-  // Clear all local data
-  const handleDeleteAllData = () => {
-    localStorage.clear();
-    addActivityLog({
-      action: "All shared data deleted",
-      partner: "User Action",
-      dataType: "All Categories",
-      status: "warning",
-    });
+  // Clear all local data and firebase
+  const handleDeleteAllData = async () => {
+    try {
+      localStorage.clear();
 
-    setTransactionEntries([]);
-    setRecentDataShares([]);
-    setRecentUpdate(null);
+      addActivityLog({
+        action: "All shared data deleted",
+        partner: "User Action",
+        dataType: "All Categories",
+        status: "warning",
+      });
 
-    localStorage.removeItem("travelsense_transactionEntries");
-    localStorage.removeItem("travelsense_recentDataShares");
-    localStorage.removeItem("travelsense_partners");
-    localStorage.removeItem("travelsense_uploadedDatasets");
-    localStorage.removeItem("travelsense_activeCategories");
-    localStorage.removeItem("travelsense_redeemedRewards");
-    localStorage.removeItem("travelsense_voucherCodes");
-    localStorage.removeItem("travelsense_uploaded_files");
+      if (auth.currentUser) {
+        const logsRef = collection(db, "users", auth.currentUser.uid, "activityLogs");
+        const snapshot = await getDocs(logsRef);
+        const deletions = snapshot.docs.map((doc) => deleteDoc(doc.ref));
+        await Promise.all(deletions);
+        console.log("✅ All audit logs deleted from Firestore.");
+      }
+
+      setTransactionEntries([]);
+      setRecentDataShares([]);
+      setRecentUpdate(null);
+
+      localStorage.removeItem("travelsense_transactionEntries");
+      localStorage.removeItem("travelsense_recentDataShares");
+      localStorage.removeItem("travelsense_partners");
+      localStorage.removeItem("travelsense_uploadedDatasets");
+      localStorage.removeItem("travelsense_activeCategories");
+      localStorage.removeItem("travelsense_redeemedRewards");
+      localStorage.removeItem("travelsense_voucherCodes");
+      localStorage.removeItem("travelsense_uploaded_files");
+    } catch (err) {
+      console.error("❌ Error deleting local or Firestore data:", err);
+    }
   };
 
   // Export all data as JSON
@@ -1127,6 +1162,7 @@ export default function App() {
     );
   }
 
+  // Default: dashboard
   return (
     <div className="min-h-screen bg-background">
       <Navigation

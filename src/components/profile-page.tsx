@@ -158,6 +158,24 @@ const [isCodeSent, setIsCodeSent] = useState(false);
 const [tempToggle, setTempToggle] = useState(false);
 const [showMfaWarning, setShowMfaWarning] = useState(false);
 const [loading, setLoading] = useState(false);
+const [resendCooldown, setResendCooldown] = useState(false);
+const [cooldownTime, setCooldownTime] = useState(0);
+
+useEffect(() => {
+  if (!resendCooldown) return;
+  const interval = setInterval(() => {
+    setCooldownTime((prev) => {
+      if (prev <= 1) {
+        clearInterval(interval);
+        setResendCooldown(false);
+        return 0;
+      }
+      return prev - 1;
+    });
+  }, 1000);
+
+  return () => clearInterval(interval);
+}, [resendCooldown]);
 
 const checkMfaStatus = () => {
   const user = auth.currentUser;
@@ -165,44 +183,52 @@ const checkMfaStatus = () => {
   return multiFactor(user).enrolledFactors.length > 0;
 };
 
+// ✅ Initialize reCAPTCHA once when the component mounts
 useEffect(() => {
-  const initializeRecaptcha = () => {
-    if (!auth?.app || !auth.currentUser) {
-      console.warn("⏳ Auth not ready yet, waiting...");
-      setTimeout(initializeRecaptcha, 1000);
-      return;
-    }
+  // Prevent duplicate initialization
+  if (window.recaptchaVerifier) {
+    console.log("⚠️ reCAPTCHA already initialized.");
+    return;
+  }
 
+  try {
+    // Ensure container exists
     const container = document.getElementById("recaptcha-container");
     if (!container) {
-      console.warn("⏳ reCAPTCHA container not yet in DOM, waiting...");
-      setTimeout(initializeRecaptcha, 500);
+      console.warn("⏳ reCAPTCHA container not yet in DOM, retrying...");
+      setTimeout(() => {
+        // try again once DOM is ready
+        if (!window.recaptchaVerifier) {
+          window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+            size: "invisible",
+          });
+          window.recaptchaVerifier.render();
+          console.log("✅ reCAPTCHA initialized after DOM ready");
+        }
+      }, 500);
       return;
     }
 
-    if (!window.recaptchaVerifier) {
-      // 👇 REPLACE the existing try/catch block here
+    // Create the verifier
+    window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
+      size: "invisible",
+    });
+    window.recaptchaVerifier.render();
+    console.log("✅ reCAPTCHA initialized successfully in ProfilePage");
+  } catch (err) {
+    console.error("❌ reCAPTCHA init error:", err);
+  }
+
+  // Cleanup on unmount
+  return () => {
+    if (window.recaptchaVerifier) {
       try {
-        console.log("✅ Auth ready, initializing reCAPTCHA…");
-
-        // ✅ FIXED: Correct runtime argument order for Firebase 12.x
-        const verifier = new (RecaptchaVerifier as any)(
-          auth, // ✅ Auth instance first
-          "recaptcha-container", // ✅ then the container ID
-          { size: "invisible" }  // ✅ config last
-        );
-
-        window.recaptchaVerifier = verifier;
-        console.log("🎉 reCAPTCHA successfully initialized");
-      } catch (err) {
-        console.error("❌ reCAPTCHA init error:", err);
-      }
-    } else {
-      console.log("⚠️ reCAPTCHA already initialized");
+        window.recaptchaVerifier.clear();
+        delete window.recaptchaVerifier;
+        console.log("🧹 reCAPTCHA cleaned up");
+      } catch {}
     }
   };
-
-  initializeRecaptcha();
 }, []);
 
 useEffect(() => {
@@ -413,19 +439,63 @@ const handleToggleMfa = async (enabled: boolean) => {
 };
 
 // ✅ Handles deleting all shared data (used by "Delete Data" dialog)
-const handleDeleteAllData = () => {
-  if (onDeleteAllData) {
-    onDeleteAllData();
-   // ✅ Clear local storage and reset states (local only)
+const handleDeleteAllData = async () => {
+  const user = auth.currentUser;
+  if (!user) {
+    toast.error("You must be signed in to delete data.");
+    return;
+  }
+
+  const db = getFirestore();
+  const storage = getStorage();
+
+  try {
+    toast.info("Deleting your uploaded data...");
+
+    // 🔹 1. Delete uploaded datasets (Firestore + Storage)
+    const datasetsRef = import("firebase/firestore").then(({ collection, getDocs, deleteDoc }) => ({
+      collection,
+      getDocs,
+      deleteDoc,
+    }));
+
+    const { collection, getDocs, deleteDoc } = await datasetsRef;
+    const snapshot = await getDocs(collection(db, "users", user.uid, "datasets"));
+
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data();
+
+      // delete from Storage if file path exists
+      if (data.storagePath) {
+        try {
+          const fileRef = ref(storage, data.storagePath);
+          await import("firebase/storage").then(({ deleteObject }) => deleteObject(fileRef));
+        } catch (err) {
+          console.warn("Failed to delete file:", err);
+        }
+      }
+
+      await deleteDoc(docSnap.ref);
+    }
+
+    // 🔹 2. Delete profile image from storage if uploaded
+    const profileRef = ref(storage, `profileImages/${user.uid}`);
+    try {
+      await import("firebase/storage").then(({ deleteObject }) => deleteObject(profileRef));
+    } catch {
+      console.log("No profile image found to delete.");
+    }
+
+    // 🔹 3. Clear any local cached data
     localStorage.clear();
 
-    // ✅ Success feedback
-    toast.success("All account data deleted successfully.", {
-      description: "All shared data has been permanently deleted from partner systems.",
-    });
+    toast.success("✅ All your uploaded data and files have been deleted.");
+  } catch (error) {
+    console.error("❌ Error deleting data:", error);
+    toast.error("Failed to delete all data. Please try again later.");
   }
 };
- 
+
  const handleDeleteAccount = async () => {
   if (!auth.currentUser) return;
 
@@ -1058,72 +1128,117 @@ const getInitials = (name: string) =>
     )}
 
     {isCodeSent && (
-      <div className="flex flex-col space-y-2">
-        <Label htmlFor="verificationCode">Enter 6-digit Code</Label>
-        <div className="flex space-x-2">
-          <Input
-            id="verificationCode"
-            placeholder="123456"
-            value={verificationCode}
-            onChange={(e) => setVerificationCode(e.target.value)}
-            className="text-center tracking-widest font-mono"
-            maxLength={6}
-          />
-          <Button
-  type="button"
-  disabled={loading}
-  className={`bg-green-600 text-white hover:bg-green-700 flex items-center justify-center ${
-    loading ? "opacity-80 cursor-not-allowed" : ""
-  }`}
-  onClick={async () => {
-    try {
-      setLoading(true); // 🟢 Start spinner (shared with toggle)
+  <div className="flex flex-col space-y-3">
+    <Label htmlFor="verificationCode">Enter 6-digit Code</Label>
 
-      if (!verificationId) {
-        toast.error("Missing verification ID. Try sending the code again.");
-        setLoading(false);
-        return;
+    <div className="flex space-x-2">
+      <Input
+        id="verificationCode"
+        placeholder="123456"
+        value={verificationCode}
+        onChange={(e) => setVerificationCode(e.target.value)}
+        className="text-center tracking-widest font-mono"
+        maxLength={6}
+      />
+
+      <Button
+        type="button"
+        disabled={loading}
+        className={`bg-green-600 text-white hover:bg-green-700 flex items-center justify-center ${
+          loading ? "opacity-80 cursor-not-allowed" : ""
+        }`}
+        onClick={async () => {
+          try {
+            setLoading(true);
+            if (!verificationId) {
+              toast.error("Missing verification ID. Try sending the code again.");
+              setLoading(false);
+              return;
+            }
+
+            if (verificationCode.trim().length !== 6) {
+              toast.error("Please enter a valid 6-digit code.");
+              setLoading(false);
+              return;
+            }
+
+            const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
+            const assertion = PhoneMultiFactorGenerator.assertion(credential);
+
+            console.log("🔐 Enrolling phone MFA...");
+            await multiFactor(auth.currentUser!).enroll(assertion, "Primary phone");
+
+            toast.success("✅ MFA enabled successfully!");
+            setMfaEnabled(true);
+            setShowPhoneInput(false);
+            setIsCodeSent(false);
+            setVerificationCode("");
+          } catch (err: any) {
+            console.error("❌ Code verification error:", err);
+            toast.error(err.message || "Invalid or expired code.");
+          } finally {
+            setLoading(false);
+          }
+        }}
+      >
+        {loading ? (
+          <>
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            Verifying...
+          </>
+        ) : (
+          "Verify Code"
+        )}
+      </Button>
+    </div>
+
+    {/* 🔁 Resend Code Option */}
+    <div className="text-center space-y-1 mt-2">
+  <Button
+    variant="ghost"
+    size="sm"
+    disabled={resendCooldown}
+    onClick={async () => {
+      try {
+        const recaptchaVerifier = window.recaptchaVerifier;
+        if (!recaptchaVerifier) {
+          toast.error("reCAPTCHA not ready. Please reload the page.");
+          return;
+        }
+
+        setResendCooldown(true);   // ✅ start cooldown
+        setCooldownTime(10);       // ✅ 10-second countdown
+
+        const phoneProvider = new PhoneAuthProvider(auth);
+        const newId = await phoneProvider.verifyPhoneNumber(
+          phoneNumber,
+          recaptchaVerifier
+        );
+        setVerificationId(newId);
+        toast.success("New verification code sent!");
+      } catch (err: any) {
+        console.error("❌ Resend code error:", err);
+        toast.error(err.message || "Failed to resend code.");
+        setResendCooldown(false);
       }
+    }}
+    className={`text-blue-600 hover:text-blue-800 ${
+      resendCooldown ? "opacity-50 cursor-not-allowed" : ""
+    }`}
+  >
+    {resendCooldown ? "Resend Disabled" : "Resend Code"}
+  </Button>
 
-      if (verificationCode.trim().length !== 6) {
-        toast.error("Please enter a valid 6-digit code.");
-        setLoading(false);
-        return;
-      }
-
-      const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
-      const assertion = PhoneMultiFactorGenerator.assertion(credential);
-
-      console.log("🔐 Enrolling phone MFA...");
-      await multiFactor(auth.currentUser!).enroll(assertion, "Primary phone");
-
-      toast.success("✅ MFA enabled successfully!");
-      setMfaEnabled(true);
-      setShowPhoneInput(false);
-      setIsCodeSent(false);
-      setVerificationCode("");
-    } catch (err: any) {
-      console.error("❌ Code verification error:", err);
-      toast.error(err.message || "Invalid or expired code.");
-    } finally {
-      setLoading(false); // 🔵 Stop spinner when done
-    }
-  }}
->
-  {loading ? (
-    <>
-      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-      Verifying...
-    </>
-  ) : (
-    "Verify Code"
+  {/* ⏱️ Countdown text */}
+  {resendCooldown && (
+    <p className="text-xs text-gray-500 mt-1">
+      You can resend in <span className="font-semibold">{cooldownTime}</span>s
+    </p>
   )}
-</Button>
-
-        </div>
-      </div>
-    )}
-  </div>
+</div>
+</div>
+)}
+</div>
 )}
 
 {/* ✅ reCAPTCHA container */}

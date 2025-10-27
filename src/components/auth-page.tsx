@@ -56,6 +56,23 @@ export function AuthPage({ onSignIn, onReturnToLanding }: AuthPageProps) {
   const [showMfaCodeInput, setShowMfaCodeInput] = useState(false);
   const [verificationId, setVerificationId] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
+  
+  const [emailResendCooldown, setEmailResendCooldown] = useState(0);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+  if (emailResendCooldown > 0) {
+    const timer = setTimeout(() => setEmailResendCooldown(emailResendCooldown - 1), 1000);
+    return () => clearTimeout(timer);
+  }
+}, [emailResendCooldown]);
+
+useEffect(() => {
+  if (resendCooldown > 0) {
+    const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+    return () => clearTimeout(timer);
+  }
+}, [resendCooldown]);
 
 
   const handleForgotPassword = async () => {
@@ -331,29 +348,40 @@ const handleSubmit = async (e: React.FormEvent) => {
                   {signInError === "Please verify your email before signing in." && (
                     <div className="text-center">
                       <Button
-                        variant="ghost"
-                        onClick={async () => {
-                          if (!verificationUser) {
-                            console.error("No verification user stored – cannot resend verification email.");
-                            return;
-                          }
-                          if (verificationUser.emailVerified) {
-                            console.log("User already verified.");
-                            return;
-                          }
+  variant="ghost"
+  disabled={emailResendCooldown > 0}
+  onClick={async () => {
+    if (emailResendCooldown > 0) return; // prevent rapid clicks
 
-                          try {
-                            await sendEmailVerification(verificationUser);
-                            toast.success("Verification email resent.");
-                          } catch (err: any) {
-                            console.error("Error resending verification:", err);
-                            toast.error("Failed to resend verification email. Try again later.");
-                          }
-                        }}
-                      >
-                        <Send/>Resend Verification Email
-                      </Button>
+    if (!verificationUser) {
+      console.error("No verification user stored – cannot resend verification email.");
+      return;
+    }
 
+    if (verificationUser.emailVerified) {
+      console.log("User already verified.");
+      return;
+    }
+
+    try {
+      await sendEmailVerification(verificationUser);
+      toast.success("Verification email resent.");
+      setEmailResendCooldown(30); // start 30 s cooldown
+    } catch (err: any) {
+      console.error("Error resending verification:", err);
+      toast.error("Failed to resend verification email. Try again later.");
+    }
+  }}
+>
+  {emailResendCooldown > 0 ? (
+    <>Resend in {emailResendCooldown}s</>
+  ) : (
+    <>
+      <Send className="w-4 h-4 mr-1" />
+      Resend Verification Email
+    </>
+  )}
+</Button>
                     </div>
                   )}
                 </div>
@@ -457,38 +485,44 @@ const handleSubmit = async (e: React.FormEvent) => {
     {/* 🔁 Resend Code option */}
     <div className="text-center mt-2">
       <Button
-        variant="ghost"
-        size="sm"
-        className="text-blue-600 hover:text-blue-800"
-        onClick={async () => {
-          try {
-            const resolver = (window as any).mfaResolver;
-            if (!resolver) {
-              toast.error("Session expired. Please sign in again.");
-              return;
-            }
+  variant="ghost"
+  size="sm"
+  className="text-blue-600 hover:text-blue-800"
+  disabled={resendCooldown > 0}
+  onClick={async () => {
+    if (resendCooldown > 0) return; // Prevent spam clicks
 
-            const phoneInfoOptions = {
-              multiFactorHint: resolver.hints[0],
-              session: resolver.session,
-            };
+    try {
+      const resolver = (window as any).mfaResolver;
+      if (!resolver) {
+        toast.error("Session expired. Please sign in again.");
+        return;
+      }
 
-            const phoneAuthProvider = new PhoneAuthProvider(auth);
-            const newVerificationId = await phoneAuthProvider.verifyPhoneNumber(
-              phoneInfoOptions,
-              window.recaptchaVerifier
-            );
+      const phoneInfoOptions = {
+        multiFactorHint: resolver.hints[0],
+        session: resolver.session,
+      };
 
-            setVerificationId(newVerificationId);
-            toast.success("New verification code sent.");
-          } catch (err: any) {
-            console.error("Resend MFA code error:", err);
-            toast.error("Failed to resend code. Please try again.");
-          }
-        }}
-      >
-        Resend Code
-      </Button>
+      const phoneAuthProvider = new PhoneAuthProvider(auth);
+      const newVerificationId = await phoneAuthProvider.verifyPhoneNumber(
+        phoneInfoOptions,
+        window.recaptchaVerifier
+      );
+
+      setVerificationId(newVerificationId);
+      toast.success("New verification code sent.");
+
+      // ⏱️ Start 10-second cooldown
+      setResendCooldown(10);
+    } catch (err: any) {
+      console.error("Resend MFA code error:", err);
+      toast.error("Failed to resend code. Please try again.");
+    }
+  }}
+>
+  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend Code"}
+</Button>
     </div>
   </div>
 )}

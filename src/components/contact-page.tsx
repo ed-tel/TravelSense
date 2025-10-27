@@ -4,12 +4,12 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
-import { 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Clock, 
-  Send, 
+import {
+  Mail,
+  Phone,
+  MapPin,
+  Clock,
+  Send,
   MessageSquare,
   Headphones,
   FileQuestion,
@@ -21,6 +21,9 @@ import { toast } from "sonner";
 interface ContactPageProps {
   onReturnToLanding?: () => void;
 }
+
+// ---- Single source of truth for support email ----
+const SUPPORT_EMAIL = "travelsense.contact@gmail.com";
 
 export function ContactPage({ onReturnToLanding }: ContactPageProps = {}) {
   const [formData, setFormData] = useState({
@@ -64,8 +67,8 @@ export function ContactPage({ onReturnToLanding }: ContactPageProps = {}) {
       icon: Mail,
       title: "Email Us",
       description: "Our team is here to help",
-      value: "travelsense.contact@gmail.com",
-      link: "mailto:travelsense.contact@gmail.com"
+      value: SUPPORT_EMAIL,
+      link: `mailto:${SUPPORT_EMAIL}`
     },
     {
       icon: Phone,
@@ -86,9 +89,9 @@ export function ContactPage({ onReturnToLanding }: ContactPageProps = {}) {
       title: "Business Hours",
       description: "We're available",
       value: "Monday - Friday: 8:00 AM - 6:00 PM NZST",
-      link: null
+      link: null as string | null
     }
-  ];
+  ] as const;
 
   const supportOptions = [
     {
@@ -106,7 +109,7 @@ export function ContactPage({ onReturnToLanding }: ContactPageProps = {}) {
       title: "Partnership",
       description: "Interested in partnering with us"
     }
-  ];
+  ] as const;
 
   return (
     <div className="min-h-screen bg-background">
@@ -198,8 +201,8 @@ export function ContactPage({ onReturnToLanding }: ContactPageProps = {}) {
                     />
                   </div>
 
-                  <Button 
-                    type="submit" 
+                  <Button
+                    type="submit"
                     className="w-full md:w-auto"
                     disabled={isSubmitting}
                   >
@@ -265,7 +268,6 @@ export function ContactPage({ onReturnToLanding }: ContactPageProps = {}) {
                 </div>
               </CardContent>
             </Card>
-
           </div>
 
           {/* Right Column - Contact Information */}
@@ -287,11 +289,11 @@ export function ContactPage({ onReturnToLanding }: ContactPageProps = {}) {
                       <h4 className="font-medium mb-1">{method.title}</h4>
                       <p className="text-xs text-muted-foreground mb-1">{method.description}</p>
                       {method.link ? (
-                        <a 
+                        <a
                           href={method.link}
                           className="text-sm text-primary hover:underline break-words"
-                          target={method.link.startsWith('http') ? '_blank' : undefined}
-                          rel={method.link.startsWith('http') ? 'noopener noreferrer' : undefined}
+                          target={method.link.startsWith("http") ? "_blank" : undefined}
+                          rel={method.link.startsWith("http") ? "noopener noreferrer" : undefined}
                         >
                           {method.value}
                         </a>
@@ -314,7 +316,10 @@ export function ContactPage({ onReturnToLanding }: ContactPageProps = {}) {
               </CardHeader>
               <CardContent className="space-y-3">
                 {supportOptions.map((option, index) => (
-                  <div key={index} className="flex items-start space-x-4 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
+                  <div
+                    key={index}
+                    className="flex items-start space-x-4 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                  >
                     <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                       <option.icon className="w-5 h-5 text-primary" />
                     </div>
@@ -332,5 +337,3 @@ export function ContactPage({ onReturnToLanding }: ContactPageProps = {}) {
     </div>
   );
 }
-
-
