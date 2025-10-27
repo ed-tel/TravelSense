@@ -222,6 +222,12 @@ export default function App() {
     return saved !== null ? JSON.parse(saved) : true;
   });
 
+
+    // Scroll to top whenever page changes
+useEffect(() => {
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}, [currentState]);
+
   // Notifications
   const [notifications, setNotifications] = useState<Notification[]>(() => {
     const saved = localStorage.getItem("travelsense_notifications");
@@ -680,7 +686,7 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
   };
 
   // When user accepts a partner's data-share
-  const handleDataShareAccepted = (
+  const handleDataShareAccepted = async (
     partnerName: string,
     reward: string,
     _dataTypesCount: number,
@@ -745,7 +751,19 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
       dataType: dataTypeString,
       status: "success",
     });
-  };
+    if (auth.currentUser) {
+  const userId = auth.currentUser.uid;
+  const shareRef = collection(db, "users", userId, "sharedPartners");
+  await addDoc(shareRef, {
+    partnerName,
+    sharedDatasets: dataTypes, // or however you store selected dataset IDs
+    reward,
+    timestamp: serverTimestamp(),
+  });
+  console.log(`✅ Saved shared data with ${partnerName} to Firestore.`);
+}
+
+  }; 
 
   // Update a transaction entry's status
   const handleUpdateEntryStatus = (

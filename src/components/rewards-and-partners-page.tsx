@@ -42,6 +42,7 @@ Info,
 Clock,
 ChevronLeft,
 ChevronRight,
+Loader2
 } from 'lucide-react'
 import { AIVerificationModal } from './ai-verification-modal'
 import { Button } from './ui/button'
@@ -66,7 +67,23 @@ import { SecurityInformation } from './security-information'
 import { onAuthStateChanged, type User } from 'firebase/auth'
 import { collection, addDoc, onSnapshot, query, orderBy, doc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage'
-import { auth, db, storage } from '../firebaseConfig'
+import { auth, db, storage, functions } from '../firebaseConfig'
+import { setDoc, updateDoc } from "firebase/firestore";
+import { getFunctions, httpsCallable, HttpsCallableResult } from "firebase/functions";
+
+interface VerifyAIResponse {
+  success: boolean;
+  verificationPassed: boolean;
+  results: any[];
+}
+
+interface AIVerificationModalProps {
+  isOpen: boolean;
+  partnerName: string;
+  dataTypes: string[];
+  onVerificationComplete: (success: boolean) => void;
+  onCancel: () => void;
+}
 
 // ✅ Wrapper Checkbox that supports indeterminate
 const Checkbox = React.forwardRef<
@@ -89,7 +106,7 @@ Checkbox.displayName = "Checkbox";
 interface Partner {
   id: number;
   name: string;
-  logo: string; // 🆕 add this line
+  logo?: string; // 🆕 add this line
   dataTypesRequired: string[];
   reward: {
     id: string;
@@ -1203,6 +1220,7 @@ const availableRewards = activePartners.map((partner) => ({
 ...partner.reward,
 partnerName: partner.name,
 partnerId: partner.id,
+partnerLogo: partner.logo,
 verificationStatus: partner.verificationStatus || 'verified',
 }))
 
@@ -1226,6 +1244,11 @@ newSet.add(categoryId)
 return newSet
 })
 }
+
+
+useEffect(() => {
+  setActiveTab('upload')
+}, [])
 
 // Persist partners to localStorage whenever they change
 useEffect(() => {
@@ -1401,13 +1424,71 @@ const toggleDatasetSelection = (datasetId: number) => {
 setSelectedDatasets((prev) => (prev.includes(datasetId) ? prev.filter((id) => id !== datasetId) : [...prev, datasetId]))
 }
 
-const handleConfirmAccept = () => {
-if (!selectedPartner || selectedDatasets.length === 0) return
+const handleConfirmAccept = async () => {
+  if (!selectedPartner || selectedDatasets.length === 0) return;
 
-setSelectedPartner(null)
-setVerifyingPartner(selectedPartner)
-setIsVerificationModalOpen(true)
-}
+  const sharedDatasets = uploadedDatasets
+    .filter((d) => selectedDatasets.includes(d.id))
+    .map((d) => ({
+      name: d.name,
+      category: d.category,
+      size: d.size,
+      uploadDate: d.uploadDate,
+    }));
+
+  const user = auth.currentUser;
+  if (!user) {
+    console.error("User not authenticated");
+    return;
+  }
+
+  try {
+    // 1️⃣ Save “Pending Verification” status first
+    await setDoc(doc(db, "users", user.uid, "partners", selectedPartner.name), {
+      partnerName: selectedPartner.name,
+      sharedDatasets,
+      status: "Pending Verification",
+      acceptedAt: serverTimestamp(),
+    });
+
+    console.log(`✅ Shared datasets with ${selectedPartner.name}`);
+
+    // 2️⃣ Proper callable Cloud Function (NO fetch or URL)
+    const verifyDatasetAI = httpsCallable(functions, "verifyDatasetAI");
+    console.log("📡 Calling verifyDatasetAI via Firebase SDK...");
+
+    const result = await verifyDatasetAI({
+      userId: user.uid,
+      partnerName: selectedPartner.name,
+      dataTypes: sharedDatasets.map((d) => d.category),
+    });
+
+    console.log("🔥 AI verification result:", result.data);
+
+    const { success } = result.data as { success: boolean };
+
+    // 3️⃣ Update Firestore after AI result
+    await setDoc(
+      doc(db, "users", user.uid, "partners", selectedPartner.name),
+      {
+        verificationStatus: success ? "Verified" : "Failed",
+        verifiedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    console.log(
+      `🤖 Verification ${success ? "✅ passed" : "❌ failed"} for ${selectedPartner.name}`
+    );
+
+    // 4️⃣ Open your modal
+    setSelectedPartner(null);
+    setVerifyingPartner(selectedPartner);
+    setIsVerificationModalOpen(true);
+  } catch (error) {
+    console.error("❌ Error during confirmation & verification:", error);
+  }
+};
 
 const handleVerificationComplete = (success: boolean) => {
 if (!verifyingPartner) return
@@ -2011,8 +2092,12 @@ Accept partner requests to unlock exclusive rewards. Your data, your choice, you
                                   <div className="flex items-start justify-between mb-3">
                                     <div className="flex items-center gap-3">
                                       <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-gradient-to-br from-gray-400/10 to-gray-400/5">
-                                        <RewardIcon className="w-6 h-6" />
-                                      </div>
+    {partner.logo ? (
+      <span className="text-3xl">{partner.logo}</span>
+    ) : (
+      <RewardIcon className="w-6 h-6" />
+    )}
+  </div>
                                       <div>
                                         <CardTitle className="text-lg">{partner.name}</CardTitle>
                                         <div className="flex items-center gap-2 mt-1">
@@ -2145,26 +2230,27 @@ Accept partner requests to unlock exclusive rewards. Your data, your choice, you
                               <Card className="hover:shadow-lg transition-all rounded-2xl h-full flex flex-col border border-gray-300 bg-white">
                                 <CardHeader>
                                   <div className="flex items-start justify-between mb-3">
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-gradient-to-br from-gray-400/10 to-gray-400/5">
-                                        <RewardIcon className="w-6 h-6" />
-                                      </div>
-                                      <div>
-                                        <CardTitle className="text-lg">{partner.name}</CardTitle>
-                                        <div className="flex items-center gap-2 mt-1">
-                                          <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
-                                            Pending
-                                          </Badge>
-                                          {isAcceptable && (
-                                            <Badge className="bg-green-600 text-white">
-                                              <CheckCircle className="w-3 h-3 mr-1" />
-                                              Ready
-                                            </Badge>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
+  <div className="flex items-center gap-3">
+    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-3xl bg-gradient-to-br from-gray-400/10 to-gray-400/5">
+      {partner.logo || "🏷️"}
+    </div>
+    <div>
+      <CardTitle className="text-lg">{partner.name}</CardTitle>
+      <div className="flex items-center gap-2 mt-1">
+        <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
+          Pending
+        </Badge>
+        {isAcceptable && (
+          <Badge className="bg-green-600 text-white">
+            <CheckCircle className="w-3 h-3 mr-1" />
+            Ready
+          </Badge>
+        )}
+      </div>
+    </div>
+  </div>
+</div>
+
                                   <CardDescription className="space-y-3">
                                     {/* Data Types Required */}
                                     <div>
@@ -2345,8 +2431,16 @@ Accept partner requests to unlock exclusive rewards. Your data, your choice, you
                                   <div className="flex items-start justify-between mb-3">
                                     <div className="flex items-center gap-3">
                                       <div className="text-3xl">
-                                        {(() => { const RewardIcon = getRewardIcon(reward.icon, reward.type); return <RewardIcon className="w-6 h-6" /> })()}
-                                      </div>
+  {reward.partnerLogo ? (
+    <span>{reward.partnerLogo}</span>
+  ) : (
+    (() => {
+      const RewardIcon = getRewardIcon(reward.icon, reward.type);
+      return <RewardIcon className="w-6 h-6 text-gray-600" />;
+    })()
+  )}
+</div>
+
                                       <div>
                                         <p className="text-sm text-muted-foreground">{reward.partnerName}</p>
                                         <Badge variant="secondary" className="text-xs mt-1">
@@ -2453,8 +2547,16 @@ Accept partner requests to unlock exclusive rewards. Your data, your choice, you
                                   <div className="flex items-start justify-between mb-3">
                                     <div className="flex items-center gap-3">
                                       <div className="text-3xl">
-                                        {(() => { const RewardIcon = getRewardIcon(reward.icon, reward.type); return <RewardIcon className="w-6 h-6" /> })()}
-                                      </div>
+  {reward.partnerLogo ? (
+    <span>{reward.partnerLogo}</span>
+  ) : (
+    (() => {
+      const RewardIcon = getRewardIcon(reward.icon, reward.type);
+      return <RewardIcon className="w-6 h-6 text-gray-600" />;
+    })()
+  )}
+</div>
+
                                       <div>
                                         <p className="text-sm text-muted-foreground">{reward.partnerName}</p>
                                         <Badge variant="secondary" className="text-xs mt-1">
@@ -2907,11 +3009,11 @@ Accept partner requests to unlock exclusive rewards. Your data, your choice, you
             {/* Partner Info */}
             <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-xl border border-blue-200">
               <div className="w-12 h-12 bg-gradient-to-br from-[#2563EB]/10 to-[#2563EB]/5 rounded-xl flex items-center justify-center text-2xl">
-                {selectedPartner && (() => { const SelectedIcon = getRewardIcon(selectedPartner.reward.icon, selectedPartner.reward.type); return <SelectedIcon className="w-6 h-6" /> })()}
-              </div>
-              <div className="flex-1">
-                <p>{selectedPartner.name}</p>
-                <p className="text-sm text-gray-600">Reward: {selectedPartner.reward.value}</p>
+                {selectedPartner.logo}
+                  </div>
+                  <div className="flex-1">
+                    <p>{selectedPartner.name}</p>
+                    <p className="text-sm text-gray-600">Reward: {selectedPartner.reward.value}</p>
               </div>
             </div>
 

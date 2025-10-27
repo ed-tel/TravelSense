@@ -10,6 +10,12 @@ interface DeletionRequestData {
   userId: string;
 }
 
+interface VerifyAIRequest {
+  userId: string;
+  partnerName: string;
+  dataTypes?: string[];
+}
+
 // 🔹 1. Send the confirmation email
 export const sendDeletionRequest = functions.https.onCall(
   async (request: functions.https.CallableRequest<DeletionRequestData>) => {
@@ -101,3 +107,77 @@ export const confirmAccountDeletion = functions.https.onRequest(async (req, res)
     `);
   }
 });
+
+export const verifyDatasetAI = functions.https.onCall(
+  async (request: functions.https.CallableRequest<VerifyAIRequest>) => {
+    const data = request.data;
+
+    try {
+      const { userId, partnerName } = data;
+      const db = admin.firestore();
+
+      console.log(`🤖 Starting AI verification for ${partnerName} (user: ${userId})`);
+
+      // 🔹 Fetch Firestore partner document
+      const partnerDoc = await db
+        .collection("users")
+        .doc(userId)
+        .collection("partners")
+        .doc(partnerName)
+        .get();
+
+      const sharedDatasets = partnerDoc.data()?.sharedDatasets || [];
+      if (!sharedDatasets.length) {
+        console.warn(`⚠️ No shared datasets found for ${partnerName}`);
+        throw new Error("No shared datasets found in Firestore.");
+      }
+
+      let verificationPassed = false;
+      const results: any[] = [];
+
+      // 🔍 Loop through datasets in Firestore instead of Storage
+      for (const dataset of sharedDatasets) {
+        const category = dataset.category || "Unknown";
+        const name = dataset.name || "Unnamed file";
+        const size = dataset.size || "Unknown size";
+        const uploadDate = dataset.uploadDate || "N/A";
+
+        console.log(`📄 Checking dataset: ${name} (${category}, ${size})`);
+
+        // Simple example validation rule
+        const validCategories = ["Booking History", "Travel Preferences"];
+        const valid = validCategories.includes(category);
+
+        results.push({
+          name,
+          category,
+          size,
+          uploadDate,
+          valid,
+        });
+
+        verificationPassed ||= valid;
+      }
+
+      // 🔹 Save results back to Firestore
+      await db
+        .collection("users")
+        .doc(userId)
+        .collection("partners")
+        .doc(partnerName)
+        .update({
+          verificationStatus: verificationPassed ? "Verified" : "Failed",
+          verificationDetails: results,
+          verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+      console.log(`✅ Verification ${verificationPassed ? "passed" : "failed"} for ${partnerName}`);
+
+      return { success: true, verificationPassed, results };
+
+    } catch (error: any) {
+      console.error("❌ Verification error:", error);
+      throw new functions.https.HttpsError("internal", error.message);
+    }
+  }
+);

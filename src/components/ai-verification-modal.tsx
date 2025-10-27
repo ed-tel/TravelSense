@@ -4,6 +4,10 @@ import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { CheckCircle, XCircle, Bot, Sparkles } from "lucide-react";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { db, auth } from "../firebaseConfig";
+import { doc, onSnapshot } from "firebase/firestore";
+
 
 interface AIVerificationModalProps {
   isOpen: boolean;
@@ -57,6 +61,51 @@ export function AIVerificationModal({
     setVerificationStatus("verifying");
     setCurrentMessage(verificationMessages[0].text);
 
+        // 🔹 When modal opens, start AI verification in backend
+    const functions = getFunctions();
+    const verifyAI = httpsCallable(functions, "verifyDatasetAI");
+
+    const startVerification = async () => {
+      if (!auth.currentUser) return;
+      const userId = auth.currentUser.uid;
+
+      try {
+        console.log(`🤖 Sending verification request for ${partnerName}`);
+        await verifyAI({
+          userId,
+          partnerName,
+          dataTypes,
+        });
+      } catch (err) {
+        console.error("❌ Error calling verifyDatasetAI:", err);
+        setVerificationStatus("failed");
+      }
+    };
+
+    startVerification();
+
+    // 🔹 Listen for Firestore updates
+    if (auth.currentUser) {
+      const unsub = onSnapshot(
+        doc(db, "users", auth.currentUser.uid, "partners", partnerName),
+        (snapshot) => {
+          const data = snapshot.data();
+          if (!data) return;
+
+          if (data.verificationStatus === "Verified") {
+            setVerificationStatus("success");
+            setCurrentMessage("Your data has been approved!");
+            setTimeout(() => onVerificationComplete(true), 1000);
+          } else if (data.verificationStatus === "Failed") {
+            setVerificationStatus("failed");
+            setCurrentMessage("Verification failed. Please try again.");
+          }
+        }
+      );
+
+      return () => unsub();
+    }
+
     // Frame 1 → Frame 2: Animate from 0% to 100% over 6 seconds
     const controls = animate(progressValue, 100, {
       duration: 6,
@@ -75,14 +124,14 @@ export function AIVerificationModal({
       },
       onComplete: () => {
         // Frame 2 → Frame 3: Wait 800ms then show success
-        setTimeout(() => {
+        /*setTimeout(() => {
           setVerificationStatus("success");
           
           // Frame 3 → Rewards: Auto-redirect after 1000ms
           setTimeout(() => {
             onVerificationComplete(true);
           }, 1000);
-        }, 800);
+        }, 800);*/
       }
     });
 
