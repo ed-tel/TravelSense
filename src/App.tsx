@@ -821,48 +821,45 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
     }
   };
 
-  // Export all data as JSON
-  const handleDataExport = () => {
-    try {
-      const exportObject = {
-        profile: {
-          name: userName,
-          email: userEmail,
-        },
-        transactions: transactionEntries,
-        activityLog,
-        exportsAt: new Date().toISOString(),
-      };
+  // Export all data as CSV
+  const handleDataExport = async () => {
+  const user = auth.currentUser;
+  if (!user) return;
 
-      const blob = new Blob([JSON.stringify(exportObject, null, 2)], {
-        type: "application/json;charset=utf-8;",
-      });
-      const url = URL.createObjectURL(blob);
+  const db = getFirestore();
+  const logsRef = collection(db, "users", user.uid, "activityLogs");
+  const snapshot = await getDocs(logsRef);
 
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `TravelSense_Full_Export_${new Date()
-        .toISOString()
-        .split("T")[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+  if (snapshot.empty) return;
 
-      addActivityLog({
-        action: "Full data export completed",
-        partner: "User Action",
-        dataType: "All Account Data",
-        status: "success",
-      });
-    } catch (err) {
-      console.error(err);
-      addActivityLog({
-        action: "Full data export failed",
-        partner: "System",
-        dataType: "All Account Data",
-        status: "warning",
-      });
-    }
-  };
+  const logs = snapshot.docs.map((doc) => doc.data());
+  const csvHeader = "Action,Partner,Data Type,Status,Timestamp\n";
+  const csvRows = logs
+    .map((log: any) => {
+      const ts = log.timestamp?.seconds
+        ? new Date(log.timestamp.seconds * 1000).toLocaleString()
+        : "—";
+      return [
+        log.action || "",
+        log.partner || "",
+        log.dataType || "",
+        log.status || "",
+        ts,
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(",");
+    })
+    .join("\n");
+
+  const csvContent = csvHeader + csvRows;
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `audit_log_${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 
   const handlePasswordChange = () => {
     addActivityLog({
