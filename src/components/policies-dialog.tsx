@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Check } from "lucide-react";
+import { useRef } from "react";
+
 
 interface PoliciesDialogProps {
   agreedToTerms: boolean;
@@ -22,6 +24,7 @@ interface PoliciesDialogProps {
 }
 
 export function PoliciesDialog({ agreedToTerms, setAgreedToTerms }: PoliciesDialogProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2 flex-wrap">
@@ -56,8 +59,20 @@ export function PoliciesDialog({ agreedToTerms, setAgreedToTerms }: PoliciesDial
               </div>
 
               {/* Scrollable Main Body */}
-              <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4 scroll-smooth">
-                <Tabs defaultValue="privacy">
+
+<div
+  ref={scrollRef}
+  className="overflow-y-auto flex-1 px-6 py-4 space-y-4 scroll-smooth"
+>
+  <Tabs
+    defaultValue="privacy"
+    onValueChange={() => {
+      // When user changes tab, scroll the dialog body to the top
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = 0;
+      }
+    }}
+  >
                   <TabsList className="grid w-full grid-cols-2 rounded-xl bg-muted/50 mb-4 sticky top-0">
                     <TabsTrigger value="privacy" className="text-sm rounded-xl">
                       Privacy Policy

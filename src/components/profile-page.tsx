@@ -73,6 +73,7 @@ import { auth } from "../firebaseConfig";
 import { RecaptchaVerifier } from "firebase/auth";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
+import { collection, getDocs, deleteDoc } from "firebase/firestore";
 
 declare global {
   interface Window {
@@ -158,23 +159,13 @@ const [isCodeSent, setIsCodeSent] = useState(false);
 const [tempToggle, setTempToggle] = useState(false);
 const [showMfaWarning, setShowMfaWarning] = useState(false);
 const [loading, setLoading] = useState(false);
-const [resendCooldown, setResendCooldown] = useState(false);
-const [cooldownTime, setCooldownTime] = useState(0);
+const [resendCooldown, setResendCooldown] = useState(0);
 
 useEffect(() => {
-  if (!resendCooldown) return;
-  const interval = setInterval(() => {
-    setCooldownTime((prev) => {
-      if (prev <= 1) {
-        clearInterval(interval);
-        setResendCooldown(false);
-        return 0;
-      }
-      return prev - 1;
-    });
-  }, 1000);
-
-  return () => clearInterval(interval);
+  if (resendCooldown > 0) {
+    const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+    return () => clearTimeout(timer);
+  }
 }, [resendCooldown]);
 
 const checkMfaStatus = () => {
@@ -478,6 +469,92 @@ const handleDeleteAllData = async () => {
       await deleteDoc(docSnap.ref);
     }
 
+
+    // ✅ EXPORT AUDIT LOG
+const handleExportAuditLog = async () => {
+  const user = auth.currentUser;
+  if (!user) {
+    toast.error("You must be signed in to export your audit log.");
+    return;
+  }
+
+  const db = getFirestore();
+  try {
+    const logsRef = collection(db, "users", user.uid, "activityLogs");
+    const snapshot = await getDocs(logsRef);
+
+    if (snapshot.empty) {
+      toast.info("No audit log entries to export.");
+      return;
+    }
+
+    const logs = snapshot.docs.map((doc) => doc.data());
+    const csvHeader = "Action,Partner,Data Type,Status,Timestamp\n";
+    const csvRows = logs
+      .map((log: any) => {
+        const ts = log.timestamp?.seconds
+          ? new Date(log.timestamp.seconds * 1000).toLocaleString()
+          : "—";
+        return [
+          log.action || "",
+          log.partner || "",
+          log.dataType || "",
+          log.status || "",
+          ts,
+        ]
+          .map((v) => `"${String(v).replace(/"/g, '""')}"`) // escape quotes
+          .join(",");
+      })
+      .join("\n");
+
+    const csvContent = csvHeader + csvRows;
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `audit_log_${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success("✅ Audit log exported successfully!");
+  } catch (error) {
+    console.error("❌ Error exporting audit log:", error);
+    toast.error("Failed to export audit log. Try again later.");
+  }
+};
+
+// 🗑️ DELETE AUDIT LOG
+const handleDeleteAuditLog = async () => {
+  const user = auth.currentUser;
+  if (!user) {
+    toast.error("You must be signed in to delete your audit log.");
+    return;
+  }
+
+  const db = getFirestore();
+  try {
+    const logsRef = collection(db, "users", user.uid, "activityLogs");
+    const snapshot = await getDocs(logsRef);
+
+    if (snapshot.empty) {
+      toast.info("No audit log entries found.");
+      return;
+    }
+
+    const deletions = snapshot.docs.map((doc) => deleteDoc(doc.ref));
+    await Promise.all(deletions);
+
+    toast.success("🗑️ All audit logs deleted successfully!");
+  } catch (error) {
+    console.error("❌ Error deleting audit logs:", error);
+    toast.error("Failed to delete audit logs. Please try again.");
+  }
+};
+
+
     // 🔹 2. Delete profile image from storage if uploaded
     const profileRef = ref(storage, `profileImages/${user.uid}`);
     try {
@@ -489,7 +566,7 @@ const handleDeleteAllData = async () => {
     // 🔹 3. Clear any local cached data
     localStorage.clear();
 
-    toast.success("✅ All your uploaded data and files have been deleted.");
+    toast.success("All your uploaded data and files have been deleted.");
   } catch (error) {
     console.error("❌ Error deleting data:", error);
     toast.error("Failed to delete all data. Please try again later.");
@@ -499,8 +576,8 @@ const handleDeleteAllData = async () => {
  const handleDeleteAccount = async () => {
   if (!auth.currentUser) return;
 
-  const userName = auth.currentUser.displayName || "Unknown";
-  const userEmail = auth.currentUser.email || "unknown@example.com";
+  const userName = auth.currentUser.displayName || "User";
+  const userEmail = auth.currentUser.email || "user@example.com";
   const userId = auth.currentUser.uid;
 
 
@@ -669,8 +746,8 @@ const getInitials = (name: string) =>
             Manage your profile and security settings
           </p>
         </div>
-
-
+        {/* ✅ reCAPTCHA container */}
+<div id="recaptcha-container"></div>
         {/* Tabs for different sections */}
         <Tabs defaultValue="profile" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -1029,16 +1106,19 @@ const getInitials = (name: string) =>
 
 {/* Inline warning */}
 {showMfaWarning && (
-  <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3 mt-3">
-    ⚠️ Your account is connected through{" "}
-    <strong>
-      {auth.currentUser?.providerData
-        ?.map((p) => p.providerId.replace(".com", "").toUpperCase())
-        .join(", ")}
-    </strong>.
-    <br />
-    SMS-based multi-factor authentication is only supported for
-    <strong> email/password sign-ins.</strong>
+  <div className="flex items-start space-x-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3 mt-3">
+    <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+    <p className="text-sm text-amber-800">
+      Your account is connected through{" "}
+      <strong>
+        {auth.currentUser?.providerData
+          ?.map((p) => p.providerId.replace(".com", "").toUpperCase())
+          .join(", ")}
+      </strong>.
+      <br />
+      SMS-based multi-factor authentication is only supported for{" "}
+      <strong>email/password sign-ins.</strong>
+    </p>
   </div>
 )}
 
@@ -1192,57 +1272,61 @@ const getInitials = (name: string) =>
       </Button>
     </div>
 
-    {/* 🔁 Resend Code Option */}
-    <div className="text-center space-y-1 mt-2">
+{/* 🔁 Resend Code Option (AuthPage-style) */}
+<div className="text-center mt-2">
   <Button
     variant="ghost"
     size="sm"
-    disabled={resendCooldown}
+    className={`text-blue-600 hover:text-blue-800 ${
+      resendCooldown > 0 || loading ? "opacity-60 cursor-not-allowed" : ""
+    }`}
+    disabled={resendCooldown > 0 || loading}
     onClick={async () => {
+      if (resendCooldown > 0 || loading) return; // prevent spam clicks
+
       try {
+        setLoading(true); // 🟢 Start spinner
+
         const recaptchaVerifier = window.recaptchaVerifier;
         if (!recaptchaVerifier) {
           toast.error("reCAPTCHA not ready. Please reload the page.");
+          setLoading(false);
           return;
         }
-
-        setResendCooldown(true);   // ✅ start cooldown
-        setCooldownTime(10);       // ✅ 10-second countdown
 
         const phoneProvider = new PhoneAuthProvider(auth);
         const newId = await phoneProvider.verifyPhoneNumber(
           phoneNumber,
           recaptchaVerifier
         );
+
         setVerificationId(newId);
         toast.success("New verification code sent!");
+        setResendCooldown(30); // ⏱ Start 30-second timer
       } catch (err: any) {
         console.error("❌ Resend code error:", err);
         toast.error(err.message || "Failed to resend code.");
-        setResendCooldown(false);
+      } finally {
+        setLoading(false); // 🔵 Stop spinner
       }
     }}
-    className={`text-blue-600 hover:text-blue-800 ${
-      resendCooldown ? "opacity-50 cursor-not-allowed" : ""
-    }`}
   >
-    {resendCooldown ? "Resend Disabled" : "Resend Code"}
+    {loading ? (
+      <>
+        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        Sending...
+      </>
+    ) : resendCooldown > 0 ? (
+      <>Resend in {resendCooldown}s</>
+    ) : (
+      "Resend Code"
+    )}
   </Button>
-
-  {/* ⏱️ Countdown text */}
-  {resendCooldown && (
-    <p className="text-xs text-gray-500 mt-1">
-      You can resend in <span className="font-semibold">{cooldownTime}</span>s
-    </p>
-  )}
 </div>
 </div>
 )}
 </div>
 )}
-
-{/* ✅ reCAPTCHA container */}
-<div id="recaptcha-container"></div>
 
 {/* ✅ Status message after enabled */}
 {mfaEnabled && (
@@ -1280,16 +1364,19 @@ const getInitials = (name: string) =>
 
                     {isChangingPassword && (
                       <div className="mt-4 space-y-3 border-t pt-4 animate-fadeIn">
-                        {!isEmailProvider ? (
-  <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3">
-    ⚠️ Your account is connected through{" "}
-    <strong>
-      {auth.currentUser?.providerData
-        ?.map((p) => p.providerId.replace(".com", "").toUpperCase())
-        .join(", ")}
-    </strong>.  
-    Password changes must be done through your linked provider.
-  </div>
+  {!isEmailProvider ? (
+    <div className="flex items-start space-x-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+      <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+      <p className="text-sm text-amber-800">
+        Your account is connected through{" "}
+        <strong>
+          {auth.currentUser?.providerData
+            ?.map((p) => p.providerId.replace(".com", "").toUpperCase())
+            .join(", ")}
+        </strong>.{" "}
+        Password changes must be done through your linked provider.
+      </p>
+    </div>
 ) : (
   <>
     {/* ✅ Forgot Password link */}
@@ -1527,7 +1614,7 @@ const getInitials = (name: string) =>
                     <div>
                       <h4>Export Your Audit Log</h4>
                       <p className="text-sm text-muted-foreground">
-                        Download a copy of your audit log in JSON
+                        Download a copy of your audit log in CSV
                         format
                       </p>
                     </div>

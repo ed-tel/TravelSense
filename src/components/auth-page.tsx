@@ -513,8 +513,8 @@ const handleSubmit = async (e: React.FormEvent) => {
       setVerificationId(newVerificationId);
       toast.success("New verification code sent.");
 
-      // ⏱️ Start 10-second cooldown
-      setResendCooldown(10);
+      // ⏱️ Start 30-second cooldown
+      setResendCooldown(30);
     } catch (err: any) {
       console.error("Resend MFA code error:", err);
       toast.error("Failed to resend code. Please try again.");

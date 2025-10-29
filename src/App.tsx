@@ -28,7 +28,13 @@ import { auth } from "./firebaseConfig";
 import { collection, addDoc, getDocs, deleteDoc, serverTimestamp } from "firebase/firestore";
 
 // Contact page
-import { ContactPage } from "./components/contact-page";
+import { ContactFooterPage } from "./components/contact-page";
+
+import { PrivacyPolicyFooterPage } from "./components/privacy-policy-page";
+import { TermsOfServiceFooterPage } from "./components/terms-of-service-page";
+import { PartnersFooterPage } from "./components/partners-footer-page"
+import { AboutFooterPage } from "./components/about-footer-page";
+import { toast } from "sonner";
 
 // App states
 type AppState =
@@ -43,7 +49,11 @@ type AppState =
   | "business-auth"
   | "business-dashboard"
   | "business-reports"
-  | "contact";
+  | "contact" 
+  | "privacy-policy"
+  | "terms-of-service"
+  | "partners-footer"
+  | "about-footer";
 
 export interface DashboardStats {
   totalEarned: number;
@@ -222,10 +232,33 @@ export default function App() {
     return saved !== null ? JSON.parse(saved) : true;
   });
 
+  const handleNavigateToPrivacy = () => {
+  setCurrentState("privacy-policy");
+  window.location.hash = "/privacy-policy";
+};
+
+const handleNavigateToTerms = () => {
+  setCurrentState("terms-of-service");
+  window.location.hash = "/terms-of-service";
+};
+
+const handleNavigateToPartnersFooter = () => {
+  setCurrentState("partners-footer");
+  window.location.hash = "/partners";
+};
+
+const handleNavigateToAboutFooter = () => {
+  setCurrentState("about-footer");
+  window.location.hash = "/about";
+  console.log("Navigating to About Footer ✅");
+
+};
+
+
 
     // Scroll to top whenever page changes
 useEffect(() => {
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo(0,0);
 }, [currentState]);
 
   // Notifications
@@ -609,6 +642,7 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
   }
 };
 
+
   // Notification handlers
   const handleMarkNotificationAsRead = (id: string) => {
     setNotifications((prev) =>
@@ -821,48 +855,71 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
     }
   };
 
-  // Export all data as JSON
-  const handleDataExport = () => {
-    try {
-      const exportObject = {
-        profile: {
-          name: userName,
-          email: userEmail,
-        },
-        transactions: transactionEntries,
-        activityLog,
-        exportsAt: new Date().toISOString(),
-      };
+  // Export all data as CSV
+const handleDataExport = async () => {
+  try {
+    const user = auth.currentUser;
+    if (!user) return;
 
-      const blob = new Blob([JSON.stringify(exportObject, null, 2)], {
-        type: "application/json;charset=utf-8;",
-      });
-      const url = URL.createObjectURL(blob);
+    const db = getFirestore();
+    const logsRef = collection(db, "users", user.uid, "activityLogs");
+    const snapshot = await getDocs(logsRef);
 
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `TravelSense_Full_Export_${new Date()
-        .toISOString()
-        .split("T")[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      addActivityLog({
-        action: "Full data export completed",
-        partner: "User Action",
-        dataType: "All Account Data",
-        status: "success",
-      });
-    } catch (err) {
-      console.error(err);
-      addActivityLog({
-        action: "Full data export failed",
-        partner: "System",
-        dataType: "All Account Data",
-        status: "warning",
-      });
+    if (snapshot.empty) {
+      toast.warning("No activity logs found to export.");
+      return;
     }
-  };
+
+    const logs = snapshot.docs.map((doc) => doc.data());
+    const csvHeader = "Action,Partner,Data Type,Status,Timestamp\n";
+    const csvRows = logs
+      .map((log: any) => {
+        const ts = log.timestamp?.seconds
+          ? new Date(log.timestamp.seconds * 1000).toLocaleString()
+          : "—";
+        return [
+          log.action || "",
+          log.partner || "",
+          log.dataType || "",
+          log.status || "",
+          ts,
+        ]
+          .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+          .join(",");
+      })
+      .join("\n");
+
+    const csvContent = csvHeader + csvRows;
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `TravelSense_AuditLog_${new Date()
+      .toISOString()
+      .split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    // ✅ Log the successful export
+    addActivityLog({
+      action: "Audit log exported",
+      partner: "User Action",
+      dataType: "Activity Log",
+      status: "success",
+    });
+  } catch (err) {
+    console.error(err);
+
+    // ⚠️ Log the failed export
+    addActivityLog({
+      action: "Audit log export failed",
+      partner: "System",
+      dataType: "Activity Log",
+      status: "warning",
+    });
+  }
+};
 
   const handlePasswordChange = () => {
     addActivityLog({
@@ -892,6 +949,10 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
             onSignIn={handleNavigateToDashboard}
             onBusinessSignIn={handleBusinessSignIn}
             onNavigateToContact={handleNavigateToContact}
+            onNavigateToPrivacy={handleNavigateToPrivacy}
+            onNavigateToTerms={handleNavigateToTerms}
+            onNavigateToPartnersFooter={handleNavigateToPartnersFooter}
+            onNavigateToAboutFooter={handleNavigateToAboutFooter}
           />
         </>
       );
@@ -903,6 +964,10 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
           onSignIn={handleSignIn}
           onBusinessSignIn={handleBusinessSignIn}
           onNavigateToContact={handleNavigateToContact}
+          onNavigateToPrivacy={handleNavigateToPrivacy}
+          onNavigateToTerms={handleNavigateToTerms}
+          onNavigateToPartnersFooter={handleNavigateToPartnersFooter}
+          onNavigateToAboutFooter={handleNavigateToAboutFooter}
         />
       </>
     );
@@ -962,12 +1027,44 @@ const saveLogToFirestore = async (userId: string, entry: ActivityLogInput) => {
   if (currentState === "contact") {
     return (
       <>
-        <ContactPage onReturnToLanding={handleReturnToLanding} />
+        <ContactFooterPage onReturnToLanding={handleReturnToLanding} />
         <CustomToaster />
       </>
     );
   }
 
+  if (currentState === "privacy-policy") {
+  return (
+    <>
+      <PrivacyPolicyFooterPage onReturnToLanding={handleReturnToLanding} />
+      <CustomToaster />
+    </>
+  );
+}
+
+if (currentState === "terms-of-service") {
+  return (
+    <>
+      <TermsOfServiceFooterPage onReturnToLanding={handleReturnToLanding} />
+      <CustomToaster />
+    </>
+  );
+}
+
+if (currentState === "partners-footer") {
+  return (
+    <>
+      <PartnersFooterPage onReturnToLanding={handleReturnToLanding} />
+    </>
+  );
+}
+if (currentState === "about-footer") {
+  return (
+    <>
+      <AboutFooterPage onReturnToLanding={handleReturnToLanding} />
+    </>
+  );
+}
   if (currentState === "rewards-and-partners") {
     return (
       <div className="min-h-screen bg-background">

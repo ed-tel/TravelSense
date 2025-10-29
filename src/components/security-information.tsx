@@ -15,8 +15,10 @@ import {
 } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { useRef } from "react";
 
 export function SecurityInformation() {
+  const scrollRef = useRef<HTMLDivElement>(null);
   return (
     <Card className="mt-8 bg-muted/30 border-border/50 rounded-2xl">
       <CardContent className="p-6">
@@ -56,8 +58,19 @@ export function SecurityInformation() {
                     </div>
 
                     {/* Scrollable Main Body */}
-                    <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4 scroll-smooth">
-                      <Tabs defaultValue="privacy">
+<div
+  ref={scrollRef}
+  className="overflow-y-auto flex-1 px-6 py-4 space-y-4 scroll-smooth"
+>
+  <Tabs
+    defaultValue="privacy"
+    onValueChange={() => {
+      // When user changes tab, scroll the dialog body to the top
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = 0;
+      }
+    }}
+  >
                         <TabsList className="grid w-full grid-cols-2 rounded-xl bg-muted/50 mb-4 sticky top-0">
                           <TabsTrigger value="privacy" className="text-sm rounded-xl">
                             Privacy Policy

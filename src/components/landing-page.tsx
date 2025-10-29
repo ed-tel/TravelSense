@@ -82,6 +82,10 @@ interface LandingPageProps {
   onBusinessSignIn?: () => void;
   // NEW: callback to open the Contact page
   onNavigateToContact?: () => void;
+  onNavigateToPrivacy?: () => void;
+  onNavigateToTerms?: () => void;
+  onNavigateToPartnersFooter?: () => void;
+  onNavigateToAboutFooter?: () => void;
 }
 
 export function LandingPage({
@@ -89,6 +93,10 @@ export function LandingPage({
   onSignIn,
   onBusinessSignIn,
   onNavigateToContact,
+  onNavigateToPrivacy,
+  onNavigateToTerms,
+  onNavigateToPartnersFooter,
+  onNavigateToAboutFooter,
 }: LandingPageProps = {}) {
   const [isNavOpen, setIsNavOpen] = useState(false);
 
@@ -213,9 +221,14 @@ export function LandingPage({
                 Start Earning Today
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
-              <Button size="lg" variant="outline" className="text-lg px-8">
-                See How It Works
-              </Button>
+<Button
+  size="lg"
+  variant="outline"
+  className="text-lg px-8"
+  onClick={onNavigateToContact}
+>
+  Contact Us
+</Button>
             </div>
             <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
               <div>
@@ -442,24 +455,18 @@ export function LandingPage({
               <h4 className="font-medium mb-4">Product</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
+                  <a href="#features" className="hover:text-foreground transition-colors">
                     Features
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
+                  <a href="#how-it-works" className="hover:text-foreground transition-colors">
                     How It Works
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    Pricing
-                  </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    Dashboard
-                  </a>
                 </li>
               </ul>
             </div>
@@ -467,20 +474,32 @@ export function LandingPage({
               <h4 className="font-medium mb-4">Support</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    Help Center
-                  </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    Privacy Policy
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    Terms of Service
-                  </a>
-                </li>
+  <a
+    href="#/privacy-policy"
+    onClick={(e) => {
+      e.preventDefault();
+      onNavigateToPrivacy?.();
+    }}
+    className="hover:text-foreground transition-colors"
+  >
+    Privacy Policy
+  </a>
+</li>
+<li>
+  <a
+    href="#/terms-of-service"
+    onClick={(e) => {
+      e.preventDefault();
+      onNavigateToTerms?.();
+    }}
+    className="hover:text-foreground transition-colors"
+  >
+    Terms of Service
+  </a>
+</li>
+
                 <li>
                   <a
                     href="#/contact"
@@ -501,15 +520,31 @@ export function LandingPage({
               <h4 className="font-medium mb-4">Company</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    About Us
-                  </a>
-                </li>
+  <a
+    href="#/about"
+    onClick={(e) => {
+      e.preventDefault();
+      onNavigateToAboutFooter?.();
+    }}
+    className="hover:text-foreground transition-colors"
+  >
+    About Us
+  </a>
+</li>
+
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    Partners
-                  </a>
-                </li>
+  <a
+    href="#/partners"
+    onClick={(e) => {
+      e.preventDefault();
+      onNavigateToPartnersFooter?.();
+    }}
+    className="hover:text-foreground transition-colors"
+  >
+    Partners
+  </a>
+</li>
+
                 <li>
                   <button
                     onClick={onBusinessSignIn}
@@ -519,14 +554,8 @@ export function LandingPage({
                   </button>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    Careers
-                  </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">
-                    News
-                  </a>
                 </li>
               </ul>
             </div>

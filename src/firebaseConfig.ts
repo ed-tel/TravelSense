@@ -10,7 +10,6 @@ import { getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 import { getFirestore } from "firebase/firestore";
 
-// ✅ Your Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyAlMPJ4sE0X1K3VlQh5Kma9ud3dV_u7oD4",
   authDomain: "travelsense-6d151.firebaseapp.com",
@@ -21,31 +20,18 @@ const firebaseConfig = {
   measurementId: "G-W8JWYKL58Y",
 };
 
-// ✅ Initialize Firebase app once
 const app = initializeApp(firebaseConfig);
 
-// ✅ Export core services (MUST come from the same `app`)
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-const functions = getFunctions(app, "us-central1");
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
+export const functions = getFunctions(app, "us-central1");
 
-// ✅ Social providers (optional scopes)
-const googleProvider = new GoogleAuthProvider();
+export const googleProvider = new GoogleAuthProvider();
 
-const facebookProvider = new FacebookAuthProvider();
+export const facebookProvider = new FacebookAuthProvider();
 facebookProvider.addScope("email");
 facebookProvider.addScope("public_profile");
 facebookProvider.setCustomParameters({ display: "popup" });
 
-// ✅ Export all for easy imports
-export {
-  app,
-  auth,
-  db,
-  functions,
-  googleProvider,
-  facebookProvider,
-  signInWithPopup,
-  storage,
-};
+export { signInWithPopup, app };

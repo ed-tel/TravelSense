@@ -1,13 +1,12 @@
+// src/components/ai-verification-modal.tsx
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { Progress } from "./ui/progress";
 import { CheckCircle, XCircle, Bot, Sparkles } from "lucide-react";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { db, auth } from "../firebaseConfig";
 import { doc, onSnapshot } from "firebase/firestore";
-
 
 interface AIVerificationModalProps {
   isOpen: boolean;
@@ -16,14 +15,6 @@ interface AIVerificationModalProps {
   onVerificationComplete: (success: boolean) => void;
   onCancel: () => void;
 }
-
-/**
- * Animation Timeline:
- * Frame 1 → Frame 2: Progress 0% → 100% (6 seconds, ease-in-out)
- * Frame 2 → Frame 3: Wait 800ms, show success state
- * Frame 3 → Rewards: Auto-redirect after 1000ms
- * Total duration: ~7.8 seconds
- */
 
 const verificationMessages = [
   { range: [0, 20], text: "Checking data type consistency..." },
@@ -44,6 +35,7 @@ export function AIVerificationModal({
   const [displayProgress, setDisplayProgress] = useState(0);
   const [currentMessage, setCurrentMessage] = useState(verificationMessages[0].text);
   const [verificationStatus, setVerificationStatus] = useState<"verifying" | "success" | "failed">("verifying");
+  const [inFlight, setInFlight] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
@@ -52,100 +44,80 @@ export function AIVerificationModal({
       setDisplayProgress(0);
       setCurrentMessage(verificationMessages[0].text);
       setVerificationStatus("verifying");
+      setInFlight(false);
       return;
     }
 
-    // Reset to initial state (Frame 1: 0%)
+    // Reset to initial state
     progressValue.set(0);
     setDisplayProgress(0);
     setVerificationStatus("verifying");
     setCurrentMessage(verificationMessages[0].text);
 
-        // 🔹 When modal opens, start AI verification in backend
     const functions = getFunctions();
     const verifyAI = httpsCallable(functions, "verifyDatasetAI");
 
     const startVerification = async () => {
-      if (!auth.currentUser) return;
-      const userId = auth.currentUser.uid;
-
+      if (inFlight) return;
+      setInFlight(true);
       try {
-        console.log(`🤖 Sending verification request for ${partnerName}`);
-        await verifyAI({
-          userId,
-          partnerName,
-          dataTypes,
+        const userId = auth.currentUser?.uid || "demo-user";
+        // Kick off the animation while we wait for the server
+        const controls = animate(progressValue, 90, {
+          duration: 6,
+          ease: "easeInOut",
+          onUpdate: (latest) => {
+            setDisplayProgress(Math.round(latest));
+            const msg = verificationMessages.find((m) => latest >= m.range[0] && latest < m.range[1]);
+            if (msg && msg.text !== currentMessage) setCurrentMessage(msg.text);
+          },
         });
+
+        const res: any = await verifyAI({ userId, partnerName, dataTypes });
+
+        // Stop animation and snap to 100 for a crisp finish
+        controls.stop();
+        progressValue.set(100);
+        setDisplayProgress(100);
+
+        // Handle rate limit gracefully
+        if (res?.data?.code === "RATE_LIMIT") {
+          setVerificationStatus("failed");
+          setCurrentMessage(
+            `AI is busy right now. Please try again in ~${Math.ceil((res.data.retryAfterMs || 20000) / 1000)}s.`
+          );
+          setInFlight(false);
+          return;
+        }
+
+        // Normal decision path
+        const decision = (res?.data?.aiDecision as string) || "";
+        if (decision === "Verified") {
+          setVerificationStatus("success");
+          setCurrentMessage("Your data has been approved!");
+          setTimeout(() => onVerificationComplete(true), 1000);
+        } else {
+          setVerificationStatus("failed");
+          setCurrentMessage("Verification failed. The uploaded file doesn't match the required data types.");
+        }
       } catch (err) {
         console.error("❌ Error calling verifyDatasetAI:", err);
         setVerificationStatus("failed");
+        setCurrentMessage("Service error. Please try again shortly.");
+      } finally {
+        setInFlight(false);
       }
     };
 
     startVerification();
-
-    // 🔹 Listen for Firestore updates
-    if (auth.currentUser) {
-      const unsub = onSnapshot(
-        doc(db, "users", auth.currentUser.uid, "partners", partnerName),
-        (snapshot) => {
-          const data = snapshot.data();
-          if (!data) return;
-
-          if (data.verificationStatus === "Verified") {
-            setVerificationStatus("success");
-            setCurrentMessage("Your data has been approved!");
-            setTimeout(() => onVerificationComplete(true), 1000);
-          } else if (data.verificationStatus === "Failed") {
-            setVerificationStatus("failed");
-            setCurrentMessage("Verification failed. Please try again.");
-          }
-        }
-      );
-
-      return () => unsub();
-    }
-
-    // Frame 1 → Frame 2: Animate from 0% to 100% over 6 seconds
-    const controls = animate(progressValue, 100, {
-      duration: 6,
-      ease: "easeInOut",
-      onUpdate: (latest) => {
-        setDisplayProgress(Math.round(latest));
-        
-        // Update message based on progress ranges
-        const currentMsg = verificationMessages.find(
-          msg => latest >= msg.range[0] && latest < msg.range[1]
-        );
-        
-        if (currentMsg && currentMsg.text !== currentMessage) {
-          setCurrentMessage(currentMsg.text);
-        }
-      },
-      onComplete: () => {
-        // Frame 2 → Frame 3: Wait 800ms then show success
-        /*setTimeout(() => {
-          setVerificationStatus("success");
-          
-          // Frame 3 → Rewards: Auto-redirect after 1000ms
-          setTimeout(() => {
-            onVerificationComplete(true);
-          }, 1000);
-        }, 800);*/
-      }
-    });
-
-    return () => {
-      controls.stop();
-    };
-  }, [isOpen, progressValue, onVerificationComplete]);
+  }, [isOpen, partnerName, dataTypes, onVerificationComplete, progressValue]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onCancel}>
       <DialogContent className="max-w-md rounded-2xl p-0 overflow-hidden border-none">
         <DialogHeader className="sr-only">
           <DialogTitle>
-            {verificationStatus === "verifying" 
+            {verificationStatus === "verifying"
               ? "AI Verification in Progress"
               : verificationStatus === "success"
               ? "Verification Successful"
@@ -159,10 +131,10 @@ export function AIVerificationModal({
               : "The uploaded file doesn't match the required data types"}
           </DialogDescription>
         </DialogHeader>
+
         <div className="relative bg-gradient-to-br from-blue-50 via-white to-purple-50 p-8">
-          {/* Animated background effect */}
           <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 animate-pulse"></div>
-          
+
           <div className="relative z-10 space-y-6">
             {/* Header */}
             <div className="text-center space-y-2">
@@ -175,36 +147,22 @@ export function AIVerificationModal({
                     exit={{ scale: 0.8, opacity: 0 }}
                     className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-[#2563EB] to-[#1d4ed8] rounded-2xl flex items-center justify-center relative overflow-hidden"
                   >
-                    {/* Pulsing glow effect */}
                     <motion.div
                       className="absolute inset-0 bg-blue-400 rounded-2xl"
-                      animate={{
-                        opacity: [0.3, 0.6, 0.3],
-                      }}
-                      transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                        ease: "easeInOut",
-                      }}
+                      animate={{ opacity: [0.3, 0.6, 0.3] }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent"></div>
-                    {/* Subtle pulsing robot icon */}
                     <motion.div
-                      animate={{
-                        scale: [1, 1.05, 1],
-                      }}
-                      transition={{
-                        duration: 1,
-                        repeat: Infinity,
-                        ease: "easeInOut",
-                      }}
+                      animate={{ scale: [1, 1.05, 1] }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
                       className="relative z-10"
                     >
                       <Bot className="w-10 h-10 text-white" />
                     </motion.div>
                   </motion.div>
                 )}
-                
+
                 {verificationStatus === "success" && (
                   <motion.div
                     key="success"
@@ -223,7 +181,7 @@ export function AIVerificationModal({
                     </motion.div>
                   </motion.div>
                 )}
-                
+
                 {verificationStatus === "failed" && (
                   <motion.div
                     key="failed"
@@ -261,58 +219,40 @@ export function AIVerificationModal({
                 >
                   {verificationStatus === "verifying" && currentMessage}
                   {verificationStatus === "success" && "Your data has been approved. Redirecting to Rewards..."}
-                  {verificationStatus === "failed" && "Uploaded file doesn't match required data types."}
+                  {verificationStatus === "failed" && currentMessage}
                 </motion.p>
               </AnimatePresence>
             </div>
 
-            {/* Progress Bar (only show during verification) */}
+            {/* Progress */}
             {verificationStatus === "verifying" && (
               <div className="space-y-3">
                 <div className="relative h-3 w-full overflow-hidden rounded-full bg-[#E5E7EB]">
                   <motion.div
                     className="h-full rounded-full bg-gradient-to-r from-[#2563EB] via-[#3b82f6] to-[#60a5fa]"
-                    style={{ 
-                      width: progressWidth
-                    }}
+                    style={{ width: progressWidth }}
                   >
-                    {/* Shimmer effect */}
                     <motion.div
                       className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-                      animate={{
-                        x: ["-100%", "100%"],
-                      }}
-                      transition={{
-                        duration: 1.5,
-                        repeat: Infinity,
-                        ease: "linear",
-                      }}
+                      animate={{ x: ["-100%", "100%"] }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
                     />
                   </motion.div>
                 </div>
-                <motion.p 
-                  className="text-center text-gray-600"
-                  key={displayProgress}
-                  initial={{ opacity: 0.7 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.2 }}
-                >
+                <motion.p className="text-center text-gray-600" key={displayProgress}>
                   {displayProgress}%
                 </motion.p>
               </div>
             )}
 
-            {/* Partner Info */}
+            {/* Partner Info while verifying */}
             {verificationStatus === "verifying" && (
               <div className="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-[#2563EB]/20">
                 <p className="text-sm text-muted-foreground mb-2">Verifying data for:</p>
                 <p className="text-[#0E1E3D] mb-2">{partnerName}</p>
                 <div className="flex flex-wrap gap-2">
                   {dataTypes.map((type) => (
-                    <span
-                      key={type}
-                      className="text-xs px-2 py-1 bg-[#2563EB]/10 text-[#2563EB] rounded-lg"
-                    >
+                    <span key={type} className="text-xs px-2 py-1 bg-[#2563EB]/10 text-[#2563EB] rounded-lg">
                       {type}
                     </span>
                   ))}
@@ -320,13 +260,9 @@ export function AIVerificationModal({
               </div>
             )}
 
-            {/* Success Message */}
+            {/* Success Banner */}
             {verificationStatus === "success" && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-green-50 border border-green-200 rounded-xl p-4"
-              >
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-green-50 border border-green-200 rounded-xl p-4">
                 <div className="flex items-start space-x-2">
                   <Sparkles className="w-5 h-5 text-green-600 mt-0.5" />
                   <div>
@@ -338,16 +274,10 @@ export function AIVerificationModal({
               </motion.div>
             )}
 
-            {/* Failure Message */}
+            {/* Failed Banner */}
             {verificationStatus === "failed" && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-3"
-              >
-                <p className="text-sm text-orange-900">
-                  Please re-upload the correct dataset in Upload Data.
-                </p>
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-3">
+                <p className="text-sm text-orange-900">{currentMessage}</p>
                 <div className="text-xs text-orange-700 space-y-1">
                   <p>Required data types:</p>
                   <ul className="list-disc list-inside">
@@ -359,36 +289,34 @@ export function AIVerificationModal({
               </motion.div>
             )}
 
-            {/* Action Buttons */}
+            {/* Actions */}
             {verificationStatus === "verifying" && (
               <div className="flex gap-3">
-                <Button
-                  onClick={onCancel}
-                  variant="outline"
-                  className="w-full rounded-xl"
-                >
+                <Button onClick={onCancel} disabled={inFlight} variant="outline" className="w-full rounded-xl">
                   Cancel
                 </Button>
               </div>
             )}
-            
+
             {verificationStatus === "failed" && (
-              <div className="flex gap-3">
-                <Button
-                  onClick={onCancel}
-                  variant="outline"
-                  className="w-full rounded-xl"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => onVerificationComplete(false)}
-                  className="w-full rounded-xl bg-[#2563EB] hover:bg-[#2563EB]/90"
-                >
-                  Re-upload File
-                </Button>
-              </div>
-            )}
+  <div className="flex flex-col gap-3">
+    <Button
+      onClick={onCancel}
+      variant="outline"
+      className="w-full rounded-xl"
+    >
+      Close
+    </Button>
+
+    <Button
+      onClick={() => onVerificationComplete(false)}
+      className="w-full rounded-xl bg-[#2563EB] hover:bg-[#2563EB]/90"
+    >
+      Re-upload Files
+    </Button>
+  </div>
+)}
+
           </div>
         </div>
       </DialogContent>
