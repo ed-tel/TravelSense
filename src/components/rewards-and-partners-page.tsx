@@ -2832,7 +2832,7 @@ Accept partner requests to unlock exclusive rewards. Your data, your choice, you
                         <TableHead>Category</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Size</TableHead>
-                        <TableHead>Records</TableHead>
+                       
                         <TableHead>Upload Date</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="w-[100px]">Actions</TableHead>
@@ -2864,7 +2864,7 @@ Accept partner requests to unlock exclusive rewards. Your data, your choice, you
                               </Badge>
                             </TableCell>
                             <TableCell>{dataset.size}</TableCell>
-                            <TableCell>{dataset.recordsCount.toLocaleString()}</TableCell>
+        
                             <TableCell>{dataset.uploadDate}</TableCell>
                             <TableCell>
                               {dataset.status === 'success' ? (
