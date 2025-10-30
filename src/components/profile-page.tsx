@@ -395,7 +395,7 @@ const handleToggleMfa = async (enabled: boolean) => {
         await multiFactor(user).unenroll(factor.uid);
       }
 
-      toast.success("✅ Multi-Factor Authentication disabled successfully.");
+      toast.success("Multi-Factor Authentication disabled successfully.");
       setMfaEnabled(false);
     } catch (error: any) {
       console.error("❌ MFA disable error:", error);
