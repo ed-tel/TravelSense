@@ -1282,53 +1282,39 @@ const getInitials = (name: string) =>
 {/* 🔁 Resend Code Option (AuthPage-style) */}
 <div className="text-center mt-2">
   <Button
-    variant="ghost"
-    size="sm"
-    className={`text-blue-600 hover:text-blue-800 ${
-      resendCooldown > 0 || loading ? "opacity-60 cursor-not-allowed" : ""
-    }`}
-    disabled={resendCooldown > 0 || loading}
-    onClick={async () => {
-      if (resendCooldown > 0 || loading) return; // prevent spam clicks
+  variant="ghost"
+  size="sm"
+  className={`text-blue-600 hover:text-blue-800 ${
+    resendCooldown > 0 ? "opacity-60 cursor-not-allowed" : ""
+  }`}
+  disabled={resendCooldown > 0}
+  onClick={async () => {
+    if (resendCooldown > 0) return;
 
-      try {
-        setLoading(true); // 🟢 Start spinner
-
-        const recaptchaVerifier = window.recaptchaVerifier;
-        if (!recaptchaVerifier) {
-          toast.error("reCAPTCHA not ready. Please reload the page.");
-          setLoading(false);
-          return;
-        }
-
-        const phoneProvider = new PhoneAuthProvider(auth);
-        const newId = await phoneProvider.verifyPhoneNumber(
-          phoneNumber,
-          recaptchaVerifier
-        );
-
-        setVerificationId(newId);
-        toast.success("New verification code sent!");
-        setResendCooldown(30); // ⏱ Start 30-second timer
-      } catch (err: any) {
-        console.error("❌ Resend code error:", err);
-        toast.error(err.message || "Failed to resend code.");
-      } finally {
-        setLoading(false); // 🔵 Stop spinner
+    try {
+      const recaptchaVerifier = window.recaptchaVerifier;
+      if (!recaptchaVerifier) {
+        toast.error("reCAPTCHA not ready. Please reload the page.");
+        return;
       }
-    }}
-  >
-    {loading ? (
-      <>
-        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-        Sending...
-      </>
-    ) : resendCooldown > 0 ? (
-      <>Resend in {resendCooldown}s</>
-    ) : (
-      "Resend Code"
-    )}
-  </Button>
+
+      const phoneProvider = new PhoneAuthProvider(auth);
+      const newId = await phoneProvider.verifyPhoneNumber(
+        phoneNumber,
+        recaptchaVerifier
+      );
+
+      setVerificationId(newId);
+      toast.success("New verification code sent.");
+      setResendCooldown(30); // Start 30s cooldown
+    } catch (err: any) {
+      console.error("❌ Resend code error:", err);
+      toast.error(err.message || "Failed to resend code.");
+    }
+  }}
+>
+  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend Code"}
+</Button>
 </div>
 </div>
 )}
