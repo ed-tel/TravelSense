@@ -160,6 +160,7 @@ const [tempToggle, setTempToggle] = useState(false);
 const [showMfaWarning, setShowMfaWarning] = useState(false);
 const [loading, setLoading] = useState(false);
 const [resendCooldown, setResendCooldown] = useState(0);
+const [isSavingPassword, setIsSavingPassword] = useState(false);
 
 useEffect(() => {
   if (resendCooldown > 0) {
@@ -653,12 +654,16 @@ const handleChangePassword = async () => {
   }
 
   try {
+    setIsSavingPassword(true); // 🟢 Start loader
+
     const credential = EmailAuthProvider.credential(user.email, oldPassword);
     await reauthenticateWithCredential(user, credential);
     await updatePassword(user, newPassword);
+
     // ✅ Trigger log in App.tsx
     onPasswordChange?.();
-    toast.success("Password updated successfully!");
+    toast.success("✅ Password updated successfully!");
+
     setOldPassword("");
     setNewPassword("");
     setConfirmPassword("");
@@ -683,6 +688,8 @@ const handleChangePassword = async () => {
     } else {
       toast.error("Unexpected error. Please try again later.");
     }
+  } finally {
+    setIsSavingPassword(false); // 🔵 Stop loader
   }
 };
 
@@ -1498,18 +1505,27 @@ const getInitials = (name: string) =>
 
                             <div className="flex justify-end pt-2">
                               <Button
-                                onClick={handleChangePassword}
-                                disabled={
-                                  !oldPassword ||
-                                  !newPassword ||
-                                  !confirmPassword ||
-                                  newPassword !== confirmPassword ||
-                                  newPassword.length < 6
-                                }
-                                className="bg-[#2563EB] hover:bg-[#2563EB]/90"
-                              >
-                                Save Password
-                              </Button>
+  onClick={handleChangePassword}
+  disabled={
+    !oldPassword ||
+    !newPassword ||
+    !confirmPassword ||
+    newPassword !== confirmPassword ||
+    newPassword.length < 6 ||
+    isSavingPassword
+  }
+  className="bg-[#2563EB] hover:bg-[#2563EB]/90 flex items-center justify-center"
+>
+  {isSavingPassword ? (
+    <>
+      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+      Saving...
+    </>
+  ) : (
+    "Save Password"
+  )}
+</Button>
+
                             </div>
                           </>
                         )}
