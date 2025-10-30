@@ -1205,6 +1205,8 @@ return new Map(Object.entries(parsed))
 }
 return new Map()
 })
+//Confirm & Accept loader before ai verification
+const [isConfirming, setIsConfirming] = useState(false);
 
 // AI Verification
 const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false)
@@ -1443,6 +1445,8 @@ const handleConfirmAccept = async () => {
   }
 
   try {
+    setIsConfirming(true); // 🟢 Start loader
+
     // 1️⃣ Save “Pending Verification” status first
     await setDoc(doc(db, "users", user.uid, "partners", selectedPartner.name), {
       partnerName: selectedPartner.name,
@@ -1487,6 +1491,9 @@ const handleConfirmAccept = async () => {
     setIsVerificationModalOpen(true);
   } catch (error) {
     console.error("❌ Error during confirmation & verification:", error);
+    toast.error("Failed to confirm and verify dataset.");
+  } finally {
+    setIsConfirming(false); // 🔵 Always stop loader
   }
 };
 
@@ -3172,9 +3179,20 @@ Accept partner requests to unlock exclusive rewards. Your data, your choice, you
         <Button variant="outline" onClick={() => setSelectedPartner(null)} className="rounded-xl">
           Cancel
         </Button>
-        <Button onClick={handleConfirmAccept} disabled={!areAllDatasetRequirementsMet()} className="bg-[#2563EB] hover:bg-[#2563EB]/90 rounded-xl">
-          Confirm & Accept
-        </Button>
+        <Button
+  onClick={handleConfirmAccept}
+  disabled={!areAllDatasetRequirementsMet() || isConfirming}
+  className="bg-[#2563EB] hover:bg-[#2563EB]/90 rounded-xl flex items-center justify-center"
+>
+  {isConfirming ? (
+    <>
+      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+      Confirming...
+    </>
+  ) : (
+    "Confirm & Accept"
+  )}
+</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
