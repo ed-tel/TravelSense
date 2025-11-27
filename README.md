@@ -9,6 +9,6 @@
 
   Run `npm run dev` to start the development server.
 
-  * Figma was used for the prototype. Some modifications, functionalities, and Firebase integration has been added seperately. *
-  * This is the final group project version, which will not be updated. Updated version are done on linked account @ed-tq. *
+  ** Figma was used for the prototype. Some modifications, functionalities, and Firebase integration has been added seperately. **
+  ** This is the final group project version, which will not be updated. The updated version is on linked account [@ed-tq](https://github.com/ed-tq).**
   
